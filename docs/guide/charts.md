@@ -42,3 +42,26 @@ History. Days with too little data are left blank rather than shown as zero.
 
 One line per year: cumulative rain since January 1, or 7-day averages of daily
 highs or lows. Click a year in the legend to hide or show it.
+
+## Comparing stations
+
+On a site with more than one station, **Compare** (in the header, on the
+Stations page, and on each station's Charts tab) shows up to six stations on
+the same charts: temperature, dew point, humidity, wind, gust, rain and
+pressure, plus solar radiation. Click a station's name to add or remove it.
+Each station keeps its own colour.
+
+- **Rain** is shown as the total since the start of the range, so the station
+  that got more rain ends higher.
+- **Show as difference from…** plots every station minus the first one you
+  picked, which is the quickest way to see a microclimate: how much colder the
+  orchard is on clear nights than the house, or how much windier the hilltop.
+- The **summary** table gives each station's high, low, mean, rain total and
+  peak gust for the range, with the same rules for missing data as
+  [Reports](reports.md): means only count days with at least 90% of their
+  readings, so a station that was offline for part of the range says so in
+  *Days with data*.
+
+Stations in different time zones can't be compared as differences at daily
+resolution (ranges over 120 days), because their days start at different
+times.

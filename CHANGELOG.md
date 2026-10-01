@@ -7,6 +7,23 @@ each release for anything you need to do beyond the usual steps in the README.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [Semantic Versioning](https://semver.org/).
 
+## 0.5.0 — 2026-10-01
+
+### Added
+
+- **Compare stations**: up to six stations on shared charts (temperature, dew
+  point, humidity, wind, gust, accumulated rain, pressure, solar), with a
+  summary table and a "difference from" view for microclimates. Linked from the
+  header, the Stations page and each station's Charts tab when there's more
+  than one station.
+
+### Changed
+
+- The dashboard's temperature card is now **Temperature & Humidity**: its
+  24-hour chart shows temperature (yellow-orange), dew point (blue) and
+  humidity (aqua, on its own 0–100% scale), with a legend and all three values
+  in the tooltip.
+
 ## 0.4.0 — 2026-10-01
 
 ### Added

@@ -33,6 +33,7 @@
       <span class="badge bg-surface-2 text-muted" x-show="history" x-text="resolutionLabel"></span>
       <button type="button" class="btn btn-ghost btn-sm" @click="resetZoom()" title="Reset zoom">Reset zoom</button>
       <a class="btn btn-secondary btn-sm" :href="csvUrl" download>Download CSV</a>
+      {% if visible_station_count > 1 %}<a class="btn btn-ghost btn-sm" href="{% url 'weather:compare' %}?s={{ station.slug }}" title="Compare this station with others">Compare</a>{% endif %}
     </div>
   </div>
 

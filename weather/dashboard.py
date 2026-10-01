@@ -49,7 +49,8 @@ def _pressure_change(station, latest):
 def _series(station, now, prefs):
     rows = list(Observation.objects.filter(station=station, timestamp__gt=now - dt.timedelta(hours=SPARK_HOURS))
                 .order_by('timestamp')
-                .values_list('timestamp', 'temp_c', 'pressure_rel_hpa', 'wind_speed_ms', 'wind_gust_ms'))
+                .values_list('timestamp', 'temp_c', 'pressure_rel_hpa', 'wind_speed_ms', 'wind_gust_ms',
+                             'humidity', 'dewpoint_c'))
 
     def points(index, convert, digits):
         return [[int(r[0].timestamp() * 1000), round(convert(r[index]), digits)] for r in rows if r[index] is not None]
@@ -60,6 +61,8 @@ def _series(station, now, prefs):
         'pressure': points(2, prefs.p, d['pressure'] + 1),
         'wind': points(3, prefs.w, 1),
         'gust': points(4, prefs.w, 1),
+        'humidity': points(5, lambda v: v, 0),
+        'dewpoint': points(6, prefs.t, d['temp']),
     }
 
 

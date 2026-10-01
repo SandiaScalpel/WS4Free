@@ -14,6 +14,7 @@ from django.views.decorators.http import require_POST
 
 from . import agro, almanac, charts, dashboard, reports
 from . import calibration, quality
+from . import compare as compare_data
 from . import help as help_docs
 from .forms import CalibrationForm, ExclusionForm, SiteSettingsForm, StationSettingsForm
 from .ingest.store import mark_dirty
@@ -599,3 +600,53 @@ def help_page(request, slug='index'):
         'previous': help_docs.PAGES[i - 1] if i > 0 else None,
         'next': help_docs.PAGES[i + 1] if i + 1 < len(slugs) else None,
     })
+
+
+# ── Station comparison ────────────────────────────────────────────────────────
+
+def _compare_selection(request):
+    """(all stations the viewer can see, the chosen ones in the order chosen)."""
+    available = list(visible_stations(request.user))
+    by_slug = {s.slug: s for s in available}
+    chosen = []
+    for slug in request.GET.getlist('s'):
+        if slug in by_slug and by_slug[slug] not in chosen:
+            chosen.append(by_slug[slug])
+    return available, chosen[:compare_data.MAX_STATIONS]
+
+
+def compare_page(request):
+    available, chosen = _compare_selection(request)
+    if len(chosen) < 2:
+        # Start with two: what was asked for (a station's Compare link), else the site's
+        # main station, then the next ones.
+        default = _home_station(request, available)
+        for candidate in [default] + available:
+            if len(chosen) >= 2:
+                break
+            if candidate is not None and candidate not in chosen:
+                chosen.append(candidate)
+    return render(request, 'weather/compare.html', {
+        'available': available, 'chosen': [s.slug for s in chosen],
+        'available_json': [{'slug': s.slug, 'name': s.name} for s in available],
+        'max_stations': compare_data.MAX_STATIONS,
+    })
+
+
+def compare_json(request):
+    _, chosen = _compare_selection(request)
+    if not chosen:
+        return HttpResponseBadRequest('choose at least one station')
+    prefs = prefs_for_request(request)
+    start, end = _parse_range(request, chosen[0])
+    if request.GET.get('range') == 'all':
+        # Everything any of the chosen stations has recorded.
+        firsts = [DailyRollup.objects.filter(station=s).order_by('date').values_list('date', flat=True).first()
+                  for s in chosen]
+        firsts = [(s, d) for s, d in zip(chosen, firsts) if d is not None]
+        if firsts:
+            start = min(charts.local_range(s, d, d)[0] for s, d in firsts)
+    data = compare_data.compare(chosen, start, end, prefs)
+    response = JsonResponse({'units': prefs.as_json(), 'tz': chosen[0].timezone, **data})
+    response['Cache-Control'] = 'private, max-age=60'
+    return response

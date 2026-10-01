@@ -24,7 +24,7 @@
     <div aria-hidden="true" class="pointer-events-none absolute -top-24 -right-16 size-72 rounded-full bg-accent/10 blur-3xl"></div>
     <div class="relative grid gap-8 sm:grid-cols-[auto_1fr] sm:items-end">
       <div>
-        <h2 id="hero-label" class="text-sm font-medium text-muted">Temperature</h2>
+        <h2 id="hero-label" class="text-sm font-medium text-muted">Temperature &amp; Humidity</h2>
         <p class="mt-1 flex items-start font-semibold tracking-tight text-ink">
           <span class="text-7xl leading-none sm:text-8xl">{{ now.temp_c|temp_value:units }}</span>
           <span class="mt-2 ml-1 text-3xl text-muted">{{ units|unit_label:"temp" }}</span>
@@ -40,8 +40,13 @@
       </dl>
     </div>
     <figure class="relative mt-6">
-      <figcaption class="sr-only">Temperature over the last 24 hours</figcaption>
-      <div class="h-28" data-chart="temp" role="img" aria-label="Line chart of temperature over the last 24 hours"></div>
+      <figcaption class="mb-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-faint">
+        <span>Last 24 hours</span>
+        <span class="inline-flex items-center gap-1.5"><span class="inline-block h-0.5 w-3 rounded-full" style="background: var(--ws-temp-line)"></span>Temperature</span>
+        <span class="inline-flex items-center gap-1.5"><span class="inline-block h-0.5 w-3 rounded-full" style="background: var(--ws-dewpoint-line)"></span>Dew point</span>
+        <span class="inline-flex items-center gap-1.5"><span class="inline-block h-0.5 w-3 rounded-full" style="background: var(--ws-humidity-line)"></span>Humidity <span class="text-faint">(0–100% scale)</span></span>
+      </figcaption>
+      <div class="h-32" data-chart="temp" role="img" aria-label="Line chart of temperature, dew point and humidity over the last 24 hours"></div>
     </figure>
   </section>
 

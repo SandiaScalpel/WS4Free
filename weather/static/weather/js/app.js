@@ -105,6 +105,48 @@
     };
   }
 
+  // Temperature card: temperature and dew point share the (hidden) temperature
+  // scale; humidity has its own 0–100 % scale. The axes are hidden as on every
+  // sparkline, so the legend names the lines and the tooltip gives all three values.
+  function tempHumidity(s, units, tz, c) {
+    const when = new Intl.DateTimeFormat(undefined, { timeZone: tz, weekday: 'short', hour: 'numeric', minute: '2-digit' });
+    const col = { temp: token('--ws-temp-line'), dew: token('--ws-dewpoint-line'), hum: token('--ws-humidity-line') };
+    const line = (name, data, color, axis, area) => {
+      const last = data.length - 1;
+      return {
+        name, type: 'line', data, yAxisIndex: axis, showSymbol: true, sampling: 'lttb',
+        symbol: 'circle', symbolSize: (v, p) => (p.dataIndex === last ? 8 : 0),
+        itemStyle: { color, borderColor: c.surface, borderWidth: 2 },
+        lineStyle: { color, width: 2, cap: 'round', join: 'round' },
+        areaStyle: area ? { color, opacity: 0.1 } : undefined, emphasis: { disabled: true },
+      };
+    };
+    const t = units.labels.temp, d = units.digits.temp;
+    return {
+      animation: false,
+      grid: { left: 4, right: 6, top: 8, bottom: 4 },
+      xAxis: { type: 'time', show: false },
+      yAxis: [{ type: 'value', scale: true, show: false }, { type: 'value', min: 0, max: 100, show: false }],
+      tooltip: {
+        ...tooltipBase(c), trigger: 'axis',
+        axisPointer: { type: 'line', lineStyle: { color: c.muted, width: 1, type: 'solid' } },
+        formatter: (ps) => {
+          const fmt = { Temperature: (v) => `${v.toFixed(d)} ${t}`, 'Dew point': (v) => `${v.toFixed(d)} ${t}`, Humidity: (v) => `${v.toFixed(0)}%` };
+          let html = `<span style="color:${c.muted}">${when.format(new Date(ps[0].value[0]))}</span>`;
+          ps.forEach((p) => {
+            html += `<div style="display:flex;align-items:center;gap:8px;line-height:1.6"><span style="display:inline-block;width:12px;height:2px;background:${p.color}"></span><b>${fmt[p.seriesName](p.value[1])}</b><span style="color:${c.muted}">${p.seriesName}</span></div>`;
+          });
+          return html;
+        },
+      },
+      series: [
+        line('Humidity', s.humidity || [], col.hum, 1, false),
+        line('Dew point', s.dewpoint || [], col.dew, 0, false),
+        line('Temperature', s.temp, col.temp, 0, true),
+      ],
+    };
+  }
+
   function columns(days, unit, digits, c) {
     const label = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
     return {
@@ -143,7 +185,7 @@
     const data = JSON.parse(holder.textContent);
     const u = data.units, c = colors();
     const build = {
-      temp: () => sparkline(data.series.temp, u.labels.temp, u.digits.temp, data.tz, c),
+      temp: () => tempHumidity(data.series, u, data.tz, c),
       wind: () => sparkline(data.series.wind, u.labels.wind, 1, data.tz, c),
       pressure: () => sparkline(data.series.pressure, u.labels.pressure, u.digits.pressure, data.tz, c),
       rain_days: () => columns(data.rain_days, u.labels.rain, u.digits.rain, c),

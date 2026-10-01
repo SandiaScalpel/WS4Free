@@ -212,3 +212,16 @@ class HeaderTests(TestCase):
         header = html[html.index('<header'):html.index('</header>')]
         self.assertIn('Backyard weather since 2021', header)
         self.assertEqual(html.count('Backyard weather since 2021'), 1)
+
+
+class TemperatureHumidityCardTests(TestCase):
+    def test_series_include_humidity_and_dew_point(self):
+        station = make_station(is_public=True)
+        now = timezone.now()
+        Observation.objects.create(station=station, timestamp=now - dt.timedelta(minutes=5), source='api',
+                                   temp_c=20.0, humidity=55.0, dewpoint_c=10.8)
+        series = dashboard.build(station, UnitPrefs.for_system('metric'), now=now)['chart_data']['series']
+        self.assertEqual([p[1] for p in series['humidity']], [55])
+        self.assertEqual([p[1] for p in series['dewpoint']], [10.8])
+        response = self.client.get(reverse('weather:station-live', args=[station.slug]))
+        self.assertContains(response, 'Temperature &amp; Humidity')

@@ -8,6 +8,7 @@
     {% else %}<p class="eyebrow">Dashboard</p>
     <h1 class="mt-1 text-3xl font-bold">Your weather, all of it.</h1>{% endif %}
   </div>
+  {% if stations|length > 1 %}<a href="{% url 'weather:compare' %}" class="btn btn-secondary">Compare stations</a>{% endif %}
 </div>
 
 {% if stations %}

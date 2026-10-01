@@ -37,7 +37,8 @@
 
     <nav class="ml-4 hidden items-center gap-1 md:flex" aria-label="Main">
       {% block nav %}
-      {% if visible_station_count > 1 %}<a href="{% url 'weather:stations' %}" class="nav-link" {% if request.resolver_match.url_name == 'stations' %}aria-current="page"{% endif %}>Stations</a>{% endif %}
+      {% if visible_station_count > 1 %}<a href="{% url 'weather:stations' %}" class="nav-link" {% if request.resolver_match.url_name == 'stations' %}aria-current="page"{% endif %}>Stations</a>
+      <a href="{% url 'weather:compare' %}" class="nav-link" {% if request.resolver_match.url_name == 'compare' %}aria-current="page"{% endif %}>Compare</a>{% endif %}
       {% endblock %}
     </nav>
 
@@ -82,7 +83,7 @@
     </div>
   </div>
   <nav x-show="menu" x-cloak x-transition class="border-t border-line px-4 py-2 md:hidden" aria-label="Main (mobile)">
-    <div class="flex flex-col gap-1">{% block nav_mobile %}{% if visible_station_count > 1 %}<a href="{% url 'weather:stations' %}" class="nav-link">Stations</a>{% endif %}<a href="{% url 'weather:help' %}" class="nav-link">Help</a>{% endblock %}</div>
+    <div class="flex flex-col gap-1">{% block nav_mobile %}{% if visible_station_count > 1 %}<a href="{% url 'weather:stations' %}" class="nav-link">Stations</a><a href="{% url 'weather:compare' %}" class="nav-link">Compare</a>{% endif %}<a href="{% url 'weather:help' %}" class="nav-link">Help</a>{% endblock %}</div>
   </nav>
 </header>
 

@@ -65,6 +65,10 @@
   --ws-shadow: 0 1px 2px rgb(15 26 42 / 0.04), 0 4px 16px -4px rgb(15 26 42 / 0.08);
   /* Chart marks: the validated reference palette (dataviz skill, slot 1), not the UI accent. */
   --ws-series-1: #2a78d6;
+  /* Dashboard "Temperature & Humidity" chart (validated together, light surface). */
+  --ws-temp-line: #d98200;
+  --ws-humidity-line: #0f9fae;
+  --ws-dewpoint-line: #1f4fbf;
   color-scheme: light;
 }
 
@@ -86,6 +90,9 @@
   --ws-cool: #4dabf7;
   --ws-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -8px rgb(0 0 0 / 0.5);
   --ws-series-1: #3987e5;
+  --ws-temp-line: #c98500;
+  --ws-humidity-line: #119cab;
+  --ws-dewpoint-line: #5778ea;
   color-scheme: dark;
 }
 
