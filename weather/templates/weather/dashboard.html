@@ -1,0 +1,21 @@
+{% extends "weather/base_generic.html" %}
+{% load static %}
+{% block title %}{{ station.name }} · {{ site.site_title }}{% endblock %}
+{% block extra_head %}<script defer src="{% static 'weather/vendor/echarts.min.js' %}"></script>{% endblock %}
+{% block content %}
+{% include "weather/partials/station_title.html" with tab="overview" %}
+
+<div id="live" class="mt-6"
+     hx-get="{% url 'weather:station-live' station.slug %}"
+     hx-trigger="every 30s [document.visibilityState === 'visible'], visibilitychange[document.visibilityState === 'visible'] from:document"
+     hx-headers='{"X-Poll": "1"}' hx-swap="innerHTML">
+  {% include "weather/partials/live.html" %}
+</div>
+
+{% if site.about and is_home %}
+<section class="card mt-6 p-6">
+  <h2 class="text-base font-semibold">About this station</h2>
+  <div class="mt-2 max-w-prose text-sm leading-relaxed text-muted">{{ site.about|linebreaks }}</div>
+</section>
+{% endif %}
+{% endblock %}

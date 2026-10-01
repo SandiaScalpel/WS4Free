@@ -1,0 +1,98 @@
+{% extends "weather/base_generic.html" %}
+{% load weather_units %}
+{% block title %}Reports · {{ station.name }} · {{ site.site_title }}{% endblock %}
+{% block content %}
+{% include "weather/partials/station_title.html" with tab="reports" %}
+
+<form method="get" class="card mt-6 p-5" x-data="{ period: '{{ preset }}', cols: false }">
+  <div class="flex flex-wrap items-end gap-4">
+    <div class="min-w-0 max-w-full">
+      <span class="mb-1.5 block text-sm font-medium">Period</span>
+      <div class="relative flex max-w-full overflow-x-auto rounded-lg border border-line bg-surface p-0.5 text-sm whitespace-nowrap" role="radiogroup" aria-label="Period">
+        {% for value, label in presets %}
+        <label class="m-0 cursor-pointer rounded-md px-3 py-1.5 font-medium" :class="period === '{{ value }}' ? 'bg-accent-soft text-accent' : 'text-muted hover:text-ink'">
+          <input type="radio" name="period" value="{{ value }}" class="sr-only" x-model="period" {% if preset == value %}checked{% endif %} @change="$el.form.requestSubmit()">{{ label }}
+        </label>
+        {% endfor %}
+        <label class="m-0 cursor-pointer rounded-md px-3 py-1.5 font-medium" :class="period === 'custom' ? 'bg-accent-soft text-accent' : 'text-muted hover:text-ink'">
+          <input type="radio" name="period" value="custom" class="sr-only" x-model="period" {% if preset == 'custom' %}checked{% endif %}>Custom
+        </label>
+      </div>
+    </div>
+    <div class="flex items-end gap-2" x-show="period === 'custom'" x-cloak>
+      <div><label for="r-start">From</label><input id="r-start" type="date" name="start" value="{{ report.start|date:'Y-m-d' }}" class="!py-1.5"></div>
+      <div><label for="r-end">To</label><input id="r-end" type="date" name="end" value="{{ report.end|date:'Y-m-d' }}" class="!py-1.5"></div>
+    </div>
+    <div>
+      <label for="r-group">Rows</label>
+      <select id="r-group" name="group" class="!w-auto !py-1.5" onchange="this.form.requestSubmit()">
+        <option value="auto" {% if group_choice == 'auto' %}selected{% endif %}>Automatic</option>
+        <option value="day" {% if group_choice == 'day' %}selected{% endif %}>One per day</option>
+        <option value="month" {% if group_choice == 'month' %}selected{% endif %}>One per month</option>
+        <option value="year" {% if group_choice == 'year' %}selected{% endif %}>One per year</option>
+      </select>
+    </div>
+    <div class="ml-auto flex gap-2">
+      <button type="button" class="btn btn-secondary btn-sm" @click="cols = !cols" :aria-expanded="cols">Columns</button>
+      <button type="submit" class="btn btn-primary btn-sm">Update</button>
+      <a class="btn btn-secondary btn-sm" href="?{{ csv_query }}">Download CSV</a>
+    </div>
+  </div>
+  <fieldset class="mt-4 border-t border-line pt-4" x-show="cols" x-cloak>
+    <legend class="sr-only">Columns</legend>
+    <div class="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+      {% for c in all_columns %}
+      <label class="m-0 flex items-start gap-2 font-normal" title="{{ c.help }}">
+        <input type="checkbox" name="col" value="{{ c.key }}" class="mt-0.5" {% if c.key in selected %}checked{% endif %}>
+        <span>{{ c.label }}{% if not c.daily %} <span class="text-xs text-faint">(monthly/yearly)</span>{% endif %}</span>
+      </label>
+      {% endfor %}
+    </div>
+  </fieldset>
+</form>
+
+<section class="mt-6" aria-labelledby="report-title">
+  <div class="flex flex-wrap items-baseline justify-between gap-2">
+    <h2 id="report-title" class="text-xl font-bold">
+      {% if report.group == 'day' %}Daily{% elif report.group == 'month' %}Monthly{% else %}Yearly{% endif %} summary,
+      {{ report.start|date:"M j, Y" }} – {{ report.end|date:"M j, Y" }}
+    </h2>
+    <p class="text-xs text-faint">Degree days base {% if units.temp == 'F' %}65 °F{% else %}18 °C{% endif %} · means and day counts use days with ≥ 90 % of their data</p>
+  </div>
+
+  {% if report.columns %}
+  <div class="card relative mt-3 max-h-[75vh] overflow-auto">
+    <table class="w-full text-sm [&_td]:whitespace-nowrap">
+      <thead class="sticky top-0 z-10 bg-surface text-left text-xs text-faint">
+        <tr class="border-b border-line">
+          <th scope="col" class="px-4 py-3 font-medium">{% if report.group == 'day' %}Date{% elif report.group == 'month' %}Month{% else %}Year{% endif %}</th>
+          {% for c, unit in headers %}
+          <th scope="col" class="px-4 py-3 text-right font-medium" {% if c.help %}title="{{ c.help }}"{% endif %}>{{ c.label }}{% if unit %}<span class="block font-normal">{{ unit }}</span>{% endif %}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-line tabular-nums">
+        {% for row, cells in rows %}
+        <tr class="hover:bg-surface-2/60">
+          <th scope="row" class="px-4 py-2.5 text-left font-medium whitespace-nowrap">
+            <a class="text-ink no-underline hover:text-accent" href="{% url 'weather:station-charts' station.slug %}?start={{ row.start|date:'Y-m-d' }}&end={{ row.end|date:'Y-m-d' }}">{{ row.label }}</a>
+            {% if row.partial %}<span class="ml-1 badge bg-surface-2 font-normal text-muted" title="Some days in this row have incomplete or no data">partial</span>{% endif %}
+          </th>
+          {% for cell in cells %}<td class="px-4 py-2.5 text-right">{{ cell|num }}</td>{% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot class="sticky bottom-0 bg-surface-2 font-semibold tabular-nums">
+        <tr class="border-t border-line">
+          <th scope="row" class="px-4 py-3 text-left">Whole period</th>
+          {% for cell in summary %}<td class="px-4 py-3 text-right">{{ cell|num }}</td>{% endfor %}
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  <p class="mt-2 text-xs text-muted">Totals add up the whole period; highs and lows are its extremes; means average its days. Select a row to open it in Charts.</p>
+  {% else %}
+  <p class="card mt-3 p-5 text-sm text-muted">Choose at least one column.</p>
+  {% endif %}
+</section>
+{% endblock %}

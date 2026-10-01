@@ -1,0 +1,8 @@
+{% extends "weather/base_generic.html" %}
+{# Frames django-two-factor-auth's pages (setup, backup tokens, profile) in a card. #}
+{% block extra_head %}{% block extra_media %}{% endblock %}{% endblock %}
+{% block content_frame %}
+<div class="mx-auto max-w-2xl">
+  <div class="card tf-page p-6 sm:p-8">{% block content %}{% endblock %}</div>
+</div>
+{% endblock %}

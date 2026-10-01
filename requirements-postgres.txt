@@ -1,0 +1,2 @@
+# Only needed with DB_ENGINE=postgresql (included in the Docker image).
+psycopg[binary]==3.3.6

@@ -1,0 +1,156 @@
+{% load weather_units tz %}
+{# Re-rendered every 30 s by htmx (see dashboard.html). Needs the context from weather.dashboard.build. #}
+{% timezone station.timezone %}
+<div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+  {% if latest %}
+  <span class="inline-flex items-center gap-2 {% if stale %}text-warn{% else %}text-muted{% endif %}"
+        x-data="{ age: {{ age_s|default:0 }}, t: null, init() { this.t = setInterval(() => this.age++, 1000) }, destroy() { clearInterval(this.t) } }">
+    <span class="relative flex size-2.5" aria-hidden="true">
+      {% if not stale %}<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-good opacity-60"></span>{% endif %}
+      <span class="relative inline-flex size-2.5 rounded-full {% if stale %}bg-warn{% else %}bg-good{% endif %}"></span>
+    </span>
+    {% if stale %}<span class="font-medium">Last reading {{ latest.timestamp|timesince }} ago</span>
+    {% else %}<span>Live · updated <span x-text="age < 60 ? age + ' s ago' : Math.floor(age / 60) + ' min ago'">{{ age_s }} s ago</span></span>{% endif %}
+  </span>
+  <span class="text-faint">{{ latest.timestamp|date:"D M j, g:i A" }}</span>
+  {% else %}
+  <span class="text-muted">No readings yet</span>
+  {% endif %}
+</div>
+
+<div class="mt-4 grid gap-4 lg:grid-cols-3 {% if stale %}opacity-80{% endif %}">
+  {# ── Hero: the one number this page leads with ─────────────────────────── #}
+  <section class="card relative overflow-hidden p-6 sm:p-8 lg:col-span-2" aria-labelledby="hero-label">
+    <div aria-hidden="true" class="pointer-events-none absolute -top-24 -right-16 size-72 rounded-full bg-accent/10 blur-3xl"></div>
+    <div class="relative grid gap-8 sm:grid-cols-[auto_1fr] sm:items-end">
+      <div>
+        <h2 id="hero-label" class="text-sm font-medium text-muted">Temperature</h2>
+        <p class="mt-1 flex items-start font-semibold tracking-tight text-ink">
+          <span class="text-7xl leading-none sm:text-8xl">{{ now.temp_c|temp_value:units }}</span>
+          <span class="mt-2 ml-1 text-3xl text-muted">{{ units|unit_label:"temp" }}</span>
+        </p>
+        <p class="mt-3 text-sm text-muted">Feels like <span class="font-medium text-ink">{{ feels_like_c|temp:units }}</span></p>
+      </div>
+      <dl class="grid grid-cols-2 gap-x-6 gap-y-4 text-sm sm:justify-self-end">
+        <div><dt class="text-muted">Today's high</dt><dd class="mt-0.5 text-lg font-semibold">{{ today.high_c|temp:units }}</dd></div>
+        <div><dt class="text-muted">Today's low</dt><dd class="mt-0.5 text-lg font-semibold">{{ today.low_c|temp:units }}</dd></div>
+        <div><dt class="text-muted">Humidity</dt><dd class="mt-0.5 text-lg font-semibold">{{ now.humidity|pct }}</dd></div>
+        <div><dt class="text-muted">Dew point</dt><dd class="mt-0.5 text-lg font-semibold">{{ now.dewpoint_c|temp:units }}</dd></div>
+      </dl>
+    </div>
+    <figure class="relative mt-6">
+      <figcaption class="sr-only">Temperature over the last 24 hours</figcaption>
+      <div class="h-28" data-chart="temp" role="img" aria-label="Line chart of temperature over the last 24 hours"></div>
+    </figure>
+  </section>
+
+  {# ── Wind ─────────────────────────────────────────────────────────────── #}
+  <section class="card p-6" aria-labelledby="wind-label">
+    <h2 id="wind-label" class="text-sm font-medium text-muted">Wind</h2>
+    <div class="mt-3 flex items-center gap-5">
+      {% comment %}Letters sit outside the ring and the speed inside a clear centre, so the
+         bearing marker (on the rim, pointing in from where the wind blows) never
+         collides with either.{% endcomment %}
+      <svg viewBox="0 0 130 130" class="size-32 shrink-0" role="img"
+           aria-label="{% if now.wind_dir_deg is not None %}Wind from {{ wind_compass }}, {{ now.wind_dir_deg|whole }} degrees{% else %}No wind direction{% endif %}">
+        <circle cx="65" cy="65" r="46" fill="none" stroke="var(--ws-line)" stroke-width="1"/>
+        <g stroke="var(--ws-faint)" stroke-width="1">
+          <line x1="65" y1="19" x2="65" y2="24"/><line x1="111" y1="65" x2="106" y2="65"/>
+          <line x1="65" y1="111" x2="65" y2="106"/><line x1="19" y1="65" x2="24" y2="65"/>
+        </g>
+        <g fill="var(--ws-muted)" font-size="10" font-weight="600" text-anchor="middle" dominant-baseline="central" font-family="inherit">
+          <text x="65" y="8">N</text><text x="122" y="65">E</text><text x="65" y="122">S</text><text x="8" y="65">W</text>
+        </g>
+        {% if now.wind_dir_deg is not None %}
+        <g style="transform: rotate({{ now.wind_dir_deg }}deg); transform-origin: 65px 65px; transition: transform 1s ease">
+          <path d="M65 37 L57 19 L65 23 L73 19 Z" fill="var(--ws-series-1)" stroke="var(--ws-surface)" stroke-width="2" stroke-linejoin="round"/>
+        </g>
+        {% endif %}
+        <text x="65" y="63" text-anchor="middle" font-size="20" font-weight="700" fill="var(--ws-ink)" font-family="inherit">{{ now.wind_speed_ms|speed_value:units }}</text>
+        <text x="65" y="78" text-anchor="middle" font-size="9" fill="var(--ws-muted)" font-family="inherit">{{ units|unit_label:"wind" }}</text>
+      </svg>
+      <dl class="grid gap-3 text-sm">
+        <div><dt class="text-muted">From</dt><dd class="font-semibold">{% if now.wind_dir_deg is not None %}{{ wind_compass }} <span class="font-normal text-muted">{{ now.wind_dir_deg|whole }}°</span>{% else %}—{% endif %}</dd></div>
+        <div><dt class="text-muted">Gust</dt><dd class="font-semibold">{{ now.wind_gust_ms|speed:units }}</dd></div>
+        <div><dt class="text-muted">Today's peak gust</dt><dd class="font-semibold">{{ today.gust_max_ms|speed:units }}</dd></div>
+      </dl>
+    </div>
+    <figure class="mt-4">
+      <figcaption class="mb-1 text-xs text-faint">Wind speed, 24 hours</figcaption>
+      <div class="h-16" data-chart="wind" role="img" aria-label="Line chart of wind speed over the last 24 hours"></div>
+    </figure>
+  </section>
+
+  {# ── Rain ─────────────────────────────────────────────────────────────── #}
+  <section class="card p-6" aria-labelledby="rain-label">
+    <div class="flex items-start justify-between gap-3">
+      <h2 id="rain-label" class="text-sm font-medium text-muted">Rain today</h2>
+      {% if now.rain_rate_mmh %}<span class="badge bg-accent-soft text-accent">Raining · {{ now.rain_rate_mmh|rain_rate:units }}</span>{% endif %}
+    </div>
+    <p class="mt-1 text-4xl font-semibold tracking-tight">{{ today.rain_mm|rain_value:units }}<span class="ml-1 text-lg font-normal text-muted">{{ units|unit_label:"rain" }}</span></p>
+    <dl class="mt-4 grid grid-cols-3 gap-3 text-sm">
+      <div><dt class="text-muted">Storm</dt><dd class="font-semibold">{{ rain_event_mm|rain:units }}</dd></div>
+      <div><dt class="text-muted">Month</dt><dd class="font-semibold">{{ rain_month_mm|rain:units }}</dd></div>
+      <div><dt class="text-muted">Year</dt><dd class="font-semibold">{{ rain_year_mm|rain:units }}</dd></div>
+    </dl>
+    <figure class="mt-4">
+      <figcaption class="mb-1 text-xs text-faint">Daily rain, last 2 weeks</figcaption>
+      <div class="h-16" data-chart="rain_days" role="img" aria-label="Column chart of daily rain over the last two weeks"></div>
+    </figure>
+  </section>
+
+  {# ── Pressure ─────────────────────────────────────────────────────────── #}
+  <section class="card p-6" aria-labelledby="pressure-label">
+    <h2 id="pressure-label" class="text-sm font-medium text-muted">Pressure</h2>
+    <p class="mt-1 text-4xl font-semibold tracking-tight">{{ now.pressure_rel_hpa|pressure_value:units }}<span class="ml-1 text-lg font-normal text-muted">{{ units|unit_label:"pressure" }}</span></p>
+    {% if pressure_trend %}
+    <p class="mt-2 inline-flex items-center gap-1.5 text-sm">
+      <svg class="size-4 text-muted" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+           style="transform: rotate({% if pressure_trend.direction > 0 %}-45{% elif pressure_trend.direction < 0 %}45{% else %}0{% endif %}deg)"><path d="M2 8h12M10 4l4 4-4 4"/></svg>
+      <span class="font-medium">{{ pressure_trend.label }}</span>
+      <span class="text-muted">{{ pressure_change_hpa|pressure_change:units }} in 3 h</span>
+    </p>
+    {% endif %}
+    <figure class="mt-4">
+      <figcaption class="mb-1 text-xs text-faint">Pressure, 24 hours</figcaption>
+      <div class="h-16" data-chart="pressure" role="img" aria-label="Line chart of pressure over the last 24 hours"></div>
+    </figure>
+  </section>
+
+  {# ── Sun & UV ─────────────────────────────────────────────────────────── #}
+  <section class="card p-6" aria-labelledby="sun-label">
+    <h2 id="sun-label" class="text-sm font-medium text-muted">Sun</h2>
+    <div class="mt-1 flex items-baseline justify-between gap-4">
+      <p class="text-4xl font-semibold tracking-tight">{{ now.uv_index|whole }}<span class="ml-1 text-lg font-normal text-muted">UV index</span></p>
+      {% if uv %}<span class="badge {% if uv.tone == 'good' %}bg-good/15 text-good{% elif uv.tone == 'warn' %}bg-warn/15 text-warn{% elif uv.tone == 'warm' %}bg-warm/15 text-warm{% else %}bg-bad/15 text-bad{% endif %}">{{ uv.label }}</span>{% endif %}
+    </div>
+    {# WHO scale meter: severity carried by the fill, with the category named in text. #}
+    <div class="mt-3" aria-hidden="true">
+      <div class="relative h-2 overflow-hidden rounded-full bg-surface-2">
+        <div class="absolute inset-y-0 left-0 rounded-full {% if uv.tone == 'good' %}bg-good{% elif uv.tone == 'warn' %}bg-warn{% elif uv.tone == 'warm' %}bg-warm{% else %}bg-bad{% endif %}"
+             style="width: {% widthratio now.uv_index|default:0 12 100 %}%; max-width: 100%"></div>
+      </div>
+      <div class="mt-1 flex justify-between text-[11px] text-faint"><span>0</span><span>3</span><span>6</span><span>8</span><span>11+</span></div>
+    </div>
+    <dl class="mt-4 grid grid-cols-2 gap-3 text-sm">
+      <div><dt class="text-muted">Solar radiation</dt><dd class="font-semibold">{{ now.solar_wm2|whole }} W/m²</dd></div>
+      <div><dt class="text-muted">Today's peak UV</dt><dd class="font-semibold">{{ today.uv_max|whole }}</dd></div>
+    </dl>
+  </section>
+
+  {% if show_indoor %}
+  {# ── Indoor (owner only; never on the public view) ────────────────────── #}
+  <section class="card p-6" aria-labelledby="indoor-label">
+    <div class="flex items-start justify-between gap-3">
+      <h2 id="indoor-label" class="text-sm font-medium text-muted">Indoors</h2>
+      <span class="badge bg-surface-2 text-muted" title="Only you can see this">Private</span>
+    </div>
+    <dl class="mt-1 grid grid-cols-2 gap-3">
+      <div><dt class="sr-only">Indoor temperature</dt><dd class="text-4xl font-semibold tracking-tight">{{ now.temp_in_c|temp:units }}</dd></div>
+      <div><dt class="sr-only">Indoor humidity</dt><dd class="text-4xl font-semibold tracking-tight">{{ now.humidity_in|pct }}</dd></div>
+    </dl>
+  </section>
+  {% endif %}
+</div>
+{{ chart_data|json_script:"chart-data" }}
+{% endtimezone %}

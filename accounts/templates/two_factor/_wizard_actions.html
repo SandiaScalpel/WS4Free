@@ -1,0 +1,8 @@
+{% load i18n %}
+<div class="mt-6 flex items-center gap-2">
+  {% if wizard.steps.prev %}
+    <button name="wizard_goto_step" type="submit" value="{{ wizard.steps.prev }}" class="btn btn-secondary">{% trans "Back" %}</button>
+  {% endif %}
+  {% if cancel_url and wizard.steps.current != 'auth' %}<a href="{{ cancel_url }}" class="btn btn-ghost">{% trans "Cancel" %}</a>{% endif %}
+  <button type="submit" class="btn btn-primary ml-auto">{% if wizard.steps.current == 'auth' %}{% trans "Sign in" %}{% else %}{% trans "Continue" %}{% endif %}</button>
+</div>

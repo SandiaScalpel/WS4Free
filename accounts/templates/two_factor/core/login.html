@@ -1,0 +1,58 @@
+{% extends "two_factor/_base_focus.html" %}
+{% load i18n two_factor_tags otp_webauthn %}
+
+{% block extra_media %}{{ form.media }}{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex flex-col items-center text-center">
+  {% include "weather/partials/logo.html" with class="mb-4 size-12" %}
+  <h1 class="text-2xl font-bold">{% block title %}{% if wizard.steps.current == 'auth' %}Sign in{% else %}Verify it's you{% endif %}{% endblock %}</h1>
+  <p class="mt-1.5 text-sm text-muted">
+    {% if wizard.steps.current == 'auth' %}Welcome back to WS4Free.
+    {% elif wizard.steps.current == 'token' %}{{ device|as_verbose_action }}
+    {% elif wizard.steps.current == 'backup' %}Enter one of the backup codes you saved when you set up two-factor authentication.
+    {% endif %}
+  </p>
+</div>
+
+<form action="" method="post">
+  {% csrf_token %}
+  {% include "two_factor/_wizard_forms.html" %}
+  <input type="submit" value="" hidden>
+
+  {% if other_devices %}
+  <p class="mt-6 text-sm text-muted">{% trans "Or use one of your other methods:" %}</p>
+  <div class="mt-2 flex flex-col gap-2">
+    {% for other in other_devices %}
+    <button name="challenge_device" value="{{ other.persistent_id }}" class="btn btn-secondary btn-block" type="submit">{{ other|as_action }}</button>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% include "two_factor/_wizard_actions.html" %}
+</form>
+
+{% if wizard.steps.current == 'auth' or wizard.steps.current == 'token' %}
+<div class="my-6 flex items-center gap-3 text-xs text-faint"><span class="h-px flex-1 bg-line"></span>or<span class="h-px flex-1 bg-line"></span></div>
+<div id="passkey-verification-placeholder"></div>
+<template id="passkey-verification-available-template">
+  <button id="passkey-verification-button" type="button" class="btn btn-secondary btn-block">
+    <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 8.7-8.7M17 6l2.5 2.5M14.5 8.5 17 11"/></svg>
+    {% if wizard.steps.current == 'auth' %}Sign in with a passkey{% else %}Use a passkey{% endif %}
+  </button>
+  <div id="passkey-verification-status-message" class="form-help text-center"></div>
+</template>
+{% if wizard.steps.current == 'auth' %}
+  {% render_otp_webauthn_auth_scripts username_field_selector="#id_auth-username" %}
+{% else %}
+  {% render_otp_webauthn_auth_scripts %}
+{% endif %}
+{% endif %}
+
+{% if backup_tokens %}
+<form action="" method="post" class="mt-4 text-center">
+  {% csrf_token %}
+  <button name="wizard_goto_step" type="submit" value="backup" class="btn btn-link btn-sm">{% trans "Use a backup code instead" %}</button>
+</form>
+{% endif %}
+{% endblock %}

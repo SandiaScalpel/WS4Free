@@ -1,0 +1,83 @@
+{% extends "weather/base_generic.html" %}
+{% block title %}{{ station.name }} settings · WS4Free{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-4xl">
+  {% include "weather/partials/station_header.html" %}
+
+  <form method="post" class="mt-6 space-y-6" novalidate x-data="{ dirty: {{ form.errors|yesno:'true,false' }} }" @input="dirty = true" @change="dirty = true">
+    {% csrf_token %}
+    {% if form.errors %}
+    <div class="alert alert-error" role="alert">Nothing was saved. Please fix the highlighted fields below.</div>
+    {% endif %}
+    {% if form.non_field_errors %}<ul class="errorlist nonfield">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+
+    <section class="card p-6" x-data="{ pub: {{ form.is_public.value|yesno:'true,false' }} }">
+      <div class="flex items-start justify-between gap-6">
+        <div>
+          <h2 class="text-base font-semibold">Visibility</h2>
+          <p class="mt-1 max-w-prose text-sm text-muted" x-show="pub">
+            <span class="font-medium text-good">Public.</span> Anyone can view this station's dashboard and charts without signing in.
+          </p>
+          <p class="mt-1 max-w-prose text-sm text-muted" x-show="!pub" x-cloak>
+            <span class="font-medium text-ink">Private.</span> Only you can see this station.
+          </p>
+          <p class="mt-2 text-xs text-faint">Settings, the upload URL and the upload log are never public.</p>
+        </div>
+        <label class="relative m-0 inline-flex shrink-0 cursor-pointer items-center" for="{{ form.is_public.id_for_label }}">
+          <span class="sr-only">Public station</span>
+          <input type="checkbox" name="{{ form.is_public.html_name }}" id="{{ form.is_public.id_for_label }}" class="peer sr-only" x-model="pub" {% if form.is_public.value %}checked{% endif %}>
+          <span class="h-7 w-12 rounded-full bg-surface-2 ring-1 ring-line transition peer-checked:bg-good peer-focus-visible:ring-2 peer-focus-visible:ring-accent"></span>
+          <span class="absolute left-1 top-1 size-5 rounded-full bg-white shadow transition peer-checked:translate-x-5"></span>
+        </label>
+      </div>
+    </section>
+
+    <section class="card p-6">
+      <h2 class="text-base font-semibold">Station</h2>
+      <div class="mt-4 grid gap-4">
+        {% include "weather/partials/field.html" with field=form.name %}
+        {% include "weather/partials/field.html" with field=form.place %}
+      </div>
+    </section>
+
+    <section class="card p-6">
+      <h2 class="text-base font-semibold">Location</h2>
+      <div class="mt-4 grid gap-x-4 gap-y-4 sm:grid-cols-2 [&_.field+.field]:mt-0">
+        <div class="sm:col-span-2">{% include "weather/partials/field.html" with field=form.timezone %}</div>
+        {% include "weather/partials/field.html" with field=form.latitude %}
+        {% include "weather/partials/field.html" with field=form.longitude %}
+        {% include "weather/partials/field.html" with field=form.elevation %}
+        {% include "weather/partials/field.html" with field=form.anemometer_height %}
+      </div>
+      <datalist id="tz-list">{% for tz in timezones %}<option value="{{ tz }}">{% endfor %}</datalist>
+    </section>
+
+    <section class="card p-6">
+      <h2 class="text-base font-semibold">Data sources</h2>
+      <div class="mt-4 flex items-start gap-3">
+        <input type="checkbox" name="{{ form.ambient_api_enabled.html_name }}" id="{{ form.ambient_api_enabled.id_for_label }}" class="mt-0.5" {% if form.ambient_api_enabled.value %}checked{% endif %}>
+        <div>
+          <label for="{{ form.ambient_api_enabled.id_for_label }}" class="mb-0">{{ form.ambient_api_enabled.label }}</label>
+          <span class="form-help">{{ form.ambient_api_enabled.help_text }}</span>
+        </div>
+      </div>
+      <p class="mt-4 text-sm text-muted">Console uploads are set up on the <a href="{% url 'weather:station-setup' station.slug %}">Console &amp; uploads</a> tab.</p>
+    </section>
+
+    <section class="card p-6">
+      <h2 class="text-base font-semibold">Identity</h2>
+      <p class="mt-1 text-sm text-muted">Fixed once history is recorded: changing these would break links, polling or how readings line up.</p>
+      <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+        <div><dt class="eyebrow">Address</dt><dd class="mt-1"><code>/stations/{{ station.slug }}/</code></dd></div>
+        <div><dt class="eyebrow">MAC address</dt><dd class="mt-1"><code>{{ station.mac_address }}</code></dd></div>
+        <div><dt class="eyebrow">Archive interval</dt><dd class="mt-1">{{ station.archive_interval_s }} seconds</dd></div>
+      </dl>
+    </section>
+
+    <div class="sticky bottom-0 z-10 -mx-4 flex items-center justify-end gap-4 border-t border-line bg-bg/85 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-xl sm:border">
+      <span class="text-sm text-muted" x-show="dirty" x-cloak>Unsaved changes</span>
+      <button type="submit" class="btn btn-primary">Save settings</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,115 @@
+{% extends "weather/base_generic.html" %}
+{% load otp_webauthn %}
+{% block title %}Settings · WS4Free{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-3xl">
+  <h1 class="text-2xl font-bold">Settings</h1>
+  <p class="mt-1 text-sm text-muted">Signed in as <span class="font-medium text-ink">{{ user.get_username }}</span></p>
+
+  {% if user_profile.password_strength_warning %}
+  <div class="alert alert-warning mt-6">
+    <span>Your password is on the weak side. <a href="{% url 'accounts:password-change' %}">Change it</a> to something longer — 19+ characters, or 13+ mixing upper, lower, digits and symbols.</span>
+  </div>
+  {% endif %}
+
+  <section class="card mt-6 p-6">
+    <h2 class="text-base font-semibold">Appearance</h2>
+    <form method="post" class="mt-4" x-data="{ theme: '{{ user_profile.theme }}' }">
+      {% csrf_token %}
+      <fieldset class="grid grid-cols-3 gap-3">
+        <legend class="sr-only">Theme</legend>
+        {% for value, label in theme_choices %}
+        <label class="m-0 cursor-pointer rounded-xl border p-3 text-center text-sm transition"
+               :class="theme === '{{ value }}' ? 'border-accent bg-accent-soft text-accent' : 'border-line hover:bg-surface-2'">
+          <input type="radio" name="theme" value="{{ value }}" class="sr-only" x-model="theme"
+                 @change="WS4Free.theme.set(theme); $el.form.requestSubmit()">
+          <span class="mx-auto mb-2 block h-10 w-16 overflow-hidden rounded-md border border-line">
+            {% if value == 'light' %}<span class="block h-full bg-[#f4f6f9]"></span>
+            {% elif value == 'dark' %}<span class="block h-full bg-[#0b111b]"></span>
+            {% else %}<span class="flex h-full"><span class="w-1/2 bg-[#f4f6f9]"></span><span class="w-1/2 bg-[#0b111b]"></span></span>{% endif %}
+          </span>
+          {{ label }}
+        </label>
+        {% endfor %}
+      </fieldset>
+      <noscript><button type="submit" class="btn btn-primary mt-4">Save</button></noscript>
+    </form>
+  </section>
+
+  <section class="card mt-6 p-6">
+    <h2 class="text-base font-semibold">Units</h2>
+    <p class="mt-1 text-sm text-muted">Readings are stored in metric units and converted for display, so changing these never alters your data.</p>
+    <form method="post" class="mt-4">
+      {% csrf_token %}<input type="hidden" name="form" value="units">
+      <div class="grid gap-4 sm:grid-cols-4">
+        {% for row in unit_rows %}
+        <div>
+          <label for="id_{{ row.name }}">{{ row.label }}</label>
+          <select name="{{ row.name }}" id="id_{{ row.name }}" onchange="this.form.requestSubmit()">
+            {% for value, label in row.choices %}<option value="{{ value }}" {% if value == row.current %}selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+        </div>
+        {% endfor %}
+      </div>
+      <noscript><button type="submit" class="btn btn-primary mt-4">Save units</button></noscript>
+    </form>
+  </section>
+
+  <section class="card mt-6 divide-y divide-line">
+    <div class="p-6">
+      <h2 class="text-base font-semibold">Security</h2>
+    </div>
+    <div class="flex items-center justify-between gap-4 p-6">
+      <div>
+        <div class="text-sm font-medium">Password</div>
+        <div class="text-sm text-muted">Change the password you sign in with.</div>
+      </div>
+      <a href="{% url 'accounts:password-change' %}" class="btn btn-secondary btn-sm">Change</a>
+    </div>
+    <div class="flex items-center justify-between gap-4 p-6">
+      <div>
+        <div class="text-sm font-medium">Authenticator app</div>
+        <div class="text-sm text-muted">
+          {% if otp_devices %}<span class="badge bg-good/15 text-good">Enabled</span> One-time codes, plus backup codes.
+          {% else %}Not set up.{% endif %}
+        </div>
+      </div>
+      {% if otp_devices %}
+      <a href="{% url 'two_factor:profile' %}" class="btn btn-secondary btn-sm">Manage</a>
+      {% else %}
+      <a href="{% url 'two_factor:setup' %}" class="btn btn-primary btn-sm">Set up</a>
+      {% endif %}
+    </div>
+    <div class="p-6" id="passkeys">
+      <div class="text-sm font-medium">Passkeys</div>
+      <div class="text-sm text-muted">Use a security key, phone or password manager as your second factor.</div>
+      {% if passkeys %}
+      <ul class="mt-4 divide-y divide-line rounded-xl border border-line">
+        {% for pk in passkeys %}
+        <li class="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+          <div>
+            <div class="font-medium">{{ pk.name|default:"Unnamed passkey" }}</div>
+            <div class="text-xs text-faint">Added {{ pk.created_at|date:"M j, Y" }}{% if pk.last_used_at %} · last used {{ pk.last_used_at|timesince }} ago{% endif %}</div>
+          </div>
+          <form method="post" action="{% url 'accounts:delete-passkey' pk.pk %}" onsubmit="return confirm('Remove this passkey?')">
+            {% csrf_token %}<button type="submit" class="btn btn-danger btn-sm">Remove</button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      <div id="passkey-registration-placeholder"></div>
+      <template id="passkey-registration-available-template">
+        <div class="mt-4">
+          <button id="passkey-register-button" type="button" class="btn btn-secondary btn-sm">Register a passkey</button>
+          <div id="passkey-register-status-message" class="form-help"></div>
+        </div>
+      </template>
+      <template id="passkey-registration-unavailable-template">
+        <p class="mt-4 text-sm text-faint">This browser doesn't support passkeys.</p>
+      </template>
+    </div>
+  </section>
+</div>
+{% endblock %}
+{% block extra_body %}{% render_otp_webauthn_register_scripts %}{% endblock %}

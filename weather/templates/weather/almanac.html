@@ -1,0 +1,184 @@
+{% extends "weather/base_generic.html" %}
+{% load weather_units tz %}
+{% block title %}Almanac · {{ station.name }} · {{ site.site_title }}{% endblock %}
+{% block content %}
+{% include "weather/partials/station_title.html" with tab="almanac" %}
+{% timezone station.timezone %}
+
+{# ── On this day ─────────────────────────────────────────────────────────── #}
+<section class="mt-6" aria-labelledby="otd-title" id="on-this-day">
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h2 id="otd-title" class="text-xl font-bold">{% if is_today %}On this day{% else %}{{ picked|date:"F j" }}{% endif %}</h2>
+      <p class="mt-0.5 text-sm text-muted">{{ picked|date:"F j" }} in every year this station has recorded.</p>
+    </div>
+    <form method="get" action="#on-this-day" class="flex items-center gap-2 text-sm">
+      <input type="hidden" name="records" value="{{ record_scope }}">{% if hard_freeze %}<input type="hidden" name="frost" value="freeze">{% endif %}
+      <label for="otd-date" class="sr-only">Date</label>
+      <input id="otd-date" type="date" name="date" value="{{ picked|date:'Y-m-d' }}" class="!w-auto !py-1.5" onchange="this.form.submit()">
+      {% if not is_today %}<a href="?records={{ record_scope }}{% if hard_freeze %}&frost=freeze{% endif %}#on-this-day" class="btn btn-ghost btn-sm">Today</a>{% endif %}
+      <noscript><button class="btn btn-secondary btn-sm">Show</button></noscript>
+    </form>
+  </div>
+
+  <div class="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <div class="card p-5">
+      <p class="text-sm text-muted">Normal high</p>
+      <p class="mt-1 text-3xl font-semibold tracking-tight">{{ day.normal_high_c|temp:units }}</p>
+      <p class="mt-1 text-xs text-faint">Average over {{ day.normal_years }} year{{ day.normal_years|pluralize }}, ±3 days</p>
+    </div>
+    <div class="card p-5">
+      <p class="text-sm text-muted">Normal low</p>
+      <p class="mt-1 text-3xl font-semibold tracking-tight">{{ day.normal_low_c|temp:units }}</p>
+      <p class="mt-1 text-xs text-faint">Average over {{ day.normal_years }} year{{ day.normal_years|pluralize }}, ±3 days</p>
+    </div>
+    <div class="card p-5">
+      <p class="text-sm text-muted">Record high</p>
+      <p class="mt-1 text-3xl font-semibold tracking-tight">{{ day.record_high.high_c|temp:units }}</p>
+      <p class="mt-1 text-xs text-faint">{% if day.record_high %}in {{ day.record_high.year }}{% else %}No data{% endif %}</p>
+    </div>
+    <div class="card p-5">
+      <p class="text-sm text-muted">Record low</p>
+      <p class="mt-1 text-3xl font-semibold tracking-tight">{{ day.record_low.low_c|temp:units }}</p>
+      <p class="mt-1 text-xs text-faint">{% if day.record_low %}in {{ day.record_low.year }}{% else %}No data{% endif %}</p>
+    </div>
+  </div>
+
+  {% if day.years %}
+  <div class="card relative mt-4 overflow-x-auto">{# relative: keeps sr-only headers inside the scroller #}
+    <table class="w-full text-sm [&_td]:whitespace-nowrap">
+      <caption class="sr-only">{{ picked|date:"F j" }} by year</caption>
+      <thead class="text-left text-xs text-faint">
+        <tr class="border-b border-line">
+          <th scope="col" class="px-5 py-3 font-medium">Year</th>
+          <th scope="col" class="px-5 py-3 text-right font-medium">High</th>
+          <th scope="col" class="px-5 py-3 text-right font-medium">Low</th>
+          <th scope="col" class="px-5 py-3 text-right font-medium">Rain</th>
+          <th scope="col" class="px-5 py-3 text-right font-medium">Peak gust</th>
+          <th scope="col" class="px-5 py-3"><span class="sr-only">Chart</span></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-line tabular-nums">
+        {% for y in day.years %}
+        <tr class="{% if forloop.first and is_today %}bg-accent-soft/40{% endif %}">
+          <th scope="row" class="px-5 py-3 text-left font-semibold">{{ y.year }}{% if y.partial %} <span class="badge bg-surface-2 font-normal text-muted" title="Less than 90% of the day was recorded">partial</span>{% endif %}</th>
+          <td class="px-5 py-3 text-right">{{ y.high_c|temp:units }}{% if day.record_high and y.year == day.record_high.year %} <span class="badge bg-warm/15 text-warm">record</span>{% endif %}</td>
+          <td class="px-5 py-3 text-right">{{ y.low_c|temp:units }}{% if day.record_low and y.year == day.record_low.year %} <span class="badge bg-cool/15 text-cool">record</span>{% endif %}</td>
+          <td class="px-5 py-3 text-right">{{ y.rain_mm|rain:units }}</td>
+          <td class="px-5 py-3 text-right">{{ y.gust_ms|speed:units }}</td>
+          <td class="px-5 py-3 text-right"><a class="text-xs font-medium no-underline" href="{% url 'weather:station-charts' station.slug %}?start={{ y.year }}-{{ picked|date:'m-d' }}&end={{ y.year }}-{{ picked|date:'m-d' }}">Chart &rarr;</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="border-t border-line px-5 py-3 text-xs text-muted">Measurable rain fell on {{ picked|date:"F j" }} in {{ day.rain_years }} of {{ day.years|length }} year{{ day.years|length|pluralize }}.</p>
+  </div>
+  {% else %}
+  <p class="card mt-4 p-5 text-sm text-muted">No readings for {{ picked|date:"F j" }} yet.</p>
+  {% endif %}
+</section>
+
+{# ── Records ─────────────────────────────────────────────────────────────── #}
+<section class="mt-10" aria-labelledby="records-title" id="records">
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h2 id="records-title" class="text-xl font-bold">Records</h2>
+      <p class="mt-0.5 text-sm text-muted">{% if record_scope == 'all' %}Since {{ years.0 }}.{% else %}In {{ record_scope }}.{% endif %} Select a date to open it in Charts.</p>
+    </div>
+    <form method="get" action="#records" class="text-sm">
+      <input type="hidden" name="date" value="{{ picked|date:'Y-m-d' }}">{% if hard_freeze %}<input type="hidden" name="frost" value="freeze">{% endif %}
+      <label for="records-scope" class="sr-only">Period</label>
+      <select id="records-scope" name="records" class="!w-auto !py-1.5" onchange="this.form.submit()">
+        <option value="all" {% if record_scope == 'all' %}selected{% endif %}>All time</option>
+        {% for y in years reversed %}<option value="{{ y }}" {% if record_scope == y %}selected{% endif %}>{{ y }}</option>{% endfor %}
+      </select>
+      <noscript><button class="btn btn-secondary btn-sm">Show</button></noscript>
+    </form>
+  </div>
+  <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    {% for r in records %}
+    <article class="card p-5">
+      <h3 class="text-sm text-muted">{{ r.label }}</h3>
+      <p class="mt-1 text-3xl font-semibold tracking-tight">{{ r|record_value:units }}</p>
+      <p class="mt-2 text-sm">
+        <a class="no-underline" href="{% url 'weather:station-charts' station.slug %}?start={{ r.date|date:'Y-m-d' }}&end={% if r.end_date %}{{ r.end_date|date:'Y-m-d' }}{% else %}{{ r.date|date:'Y-m-d' }}{% endif %}">
+          {% if r.key == 'wet_month' %}{{ r.note }}{% elif r.end_date %}{{ r.date|date:"M j, Y" }} – {{ r.end_date|date:"M j, Y" }}{% else %}{{ r.date|date:"M j, Y" }}{% endif %}</a>
+        {% if r.time %}<span class="text-muted">at {{ r.time|date:"g:i A" }}</span>{% endif %}
+      </p>
+      {% if r.note and r.key != 'wet_month' %}<p class="mt-1 text-xs text-faint">{{ r.note }}</p>{% endif %}
+      {% if can_manage and r.key != 'dry_spell' %}
+      <p class="mt-3 border-t border-line pt-3 text-xs">
+        <a class="text-muted no-underline hover:text-ink" href="{% url 'weather:station-quality' station.slug %}?start={{ r.date|date:'Y-m-d' }}&end={% if r.end_date %}{{ r.end_date|date:'Y-m-d' }}{% else %}{{ r.date|date:'Y-m-d' }}{% endif %}&group={{ r|record_group }}&reason={{ r.label|urlencode }} looks wrong">Not right? Exclude these readings&hellip;</a>
+      </p>
+      {% endif %}
+    </article>
+    {% empty %}
+    <p class="text-sm text-muted">No records yet.</p>
+    {% endfor %}
+  </div>
+</section>
+
+{# ── Frost dates ─────────────────────────────────────────────────────────── #}
+<section class="mt-10" aria-labelledby="frost-title" id="frost">
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h2 id="frost-title" class="text-xl font-bold">Frost dates</h2>
+      <p class="mt-0.5 text-sm text-muted">Last {% if hard_freeze %}hard freeze{% else %}frost{% endif %} of spring and first of fall: a daily low at or below {{ threshold_c|frost_threshold:units }}.</p>
+    </div>
+    <div class="flex rounded-lg border border-line bg-surface p-0.5 text-sm" role="group" aria-label="Threshold">
+      <a href="?date={{ picked|date:'Y-m-d' }}&records={{ record_scope }}#frost" class="rounded-md px-3 py-1.5 font-medium no-underline {% if not hard_freeze %}bg-accent-soft text-accent{% else %}text-muted hover:text-ink{% endif %}" {% if not hard_freeze %}aria-current="true"{% endif %}>Frost · {{ 0|frost_threshold:units }}</a>
+      <a href="?date={{ picked|date:'Y-m-d' }}&records={{ record_scope }}&frost=freeze#frost" class="rounded-md px-3 py-1.5 font-medium no-underline {% if hard_freeze %}bg-accent-soft text-accent{% else %}text-muted hover:text-ink{% endif %}" {% if hard_freeze %}aria-current="true"{% endif %}>Hard freeze · {{ -2.2|frost_threshold:units }}</a>
+    </div>
+  </div>
+
+  <div class="mt-4 grid gap-4 sm:grid-cols-3">
+    <div class="card p-5">
+      <p class="text-sm text-muted">Average last spring {% if hard_freeze %}freeze{% else %}frost{% endif %}</p>
+      <p class="mt-1 text-3xl font-semibold tracking-tight">{% if frost_summary.spring %}{{ frost_summary.spring.average|date:"M j" }}{% else %}—{% endif %}</p>
+      <p class="mt-1 text-xs text-faint">{% if frost_summary.spring %}{{ frost_summary.spring.years }} certain year{{ frost_summary.spring.years|pluralize }}{% if frost_summary.spring.years > 1 %} · {{ frost_summary.spring.earliest|date:"M j" }} to {{ frost_summary.spring.latest|date:"M j" }}{% endif %}{% else %}Not enough complete years yet{% endif %}</p>
+    </div>
+    <div class="card p-5">
+      <p class="text-sm text-muted">Average first fall {% if hard_freeze %}freeze{% else %}frost{% endif %}</p>
+      <p class="mt-1 text-3xl font-semibold tracking-tight">{% if frost_summary.fall %}{{ frost_summary.fall.average|date:"M j" }}{% else %}—{% endif %}</p>
+      <p class="mt-1 text-xs text-faint">{% if frost_summary.fall %}{{ frost_summary.fall.years }} certain year{{ frost_summary.fall.years|pluralize }}{% if frost_summary.fall.years > 1 %} · {{ frost_summary.fall.earliest|date:"M j" }} to {{ frost_summary.fall.latest|date:"M j" }}{% endif %}{% else %}Not enough complete years yet{% endif %}</p>
+    </div>
+    <div class="card p-5">
+      <p class="text-sm text-muted">Average {% if hard_freeze %}freeze{% else %}frost{% endif %}-free season</p>
+      <p class="mt-1 text-3xl font-semibold tracking-tight">{% if avg_season %}{{ avg_season }} days{% else %}—{% endif %}</p>
+      <p class="mt-1 text-xs text-faint">Years with both dates certain</p>
+    </div>
+  </div>
+
+  {% if seasons %}
+  <div class="card relative mt-4 overflow-x-auto">{# relative: keeps sr-only headers inside the scroller #}
+    <table class="w-full text-sm [&_td]:whitespace-nowrap">
+      <caption class="sr-only">{% if hard_freeze %}Hard freeze{% else %}Frost{% endif %} dates by year</caption>
+      <thead class="text-left text-xs text-faint">
+        <tr class="border-b border-line">
+          <th scope="col" class="px-5 py-3 font-medium">Year</th>
+          <th scope="col" class="px-5 py-3 font-medium">Last in spring</th>
+          <th scope="col" class="px-5 py-3 font-medium">First in fall</th>
+          <th scope="col" class="px-5 py-3 text-right font-medium">Days between</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-line tabular-nums">
+        {% for s in seasons %}
+        <tr>
+          <th scope="row" class="px-5 py-3 text-left font-semibold">{{ s.year }}</th>
+          <td class="px-5 py-3">{% if s.last_spring %}<a class="no-underline" href="{% url 'weather:station-charts' station.slug %}?start={{ s.last_spring|date:'Y-m-d' }}&end={{ s.last_spring|date:'Y-m-d' }}">{{ s.last_spring|date:"M j" }}</a>{% else %}<span class="text-muted">None found</span>{% endif %}
+            {% if s.spring_uncertain %}<span class="badge bg-warn/15 text-warn" title="Missing data after this date could hide a later frost">uncertain</span>{% endif %}</td>
+          <td class="px-5 py-3">{% if s.first_fall %}<a class="no-underline" href="{% url 'weather:station-charts' station.slug %}?start={{ s.first_fall|date:'Y-m-d' }}&end={{ s.first_fall|date:'Y-m-d' }}">{{ s.first_fall|date:"M j" }}</a>{% else %}<span class="text-muted">{% if s.fall_uncertain %}Not yet{% else %}None found{% endif %}</span>{% endif %}
+            {% if s.fall_uncertain and s.first_fall %}<span class="badge bg-warn/15 text-warn" title="Missing data before this date could hide an earlier frost">uncertain</span>{% endif %}</td>
+          <td class="px-5 py-3 text-right">{% if s.season_days %}{{ s.season_days }}{% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="border-t border-line px-5 py-3 text-xs text-muted">
+      <span class="badge bg-warn/15 text-warn">uncertain</span> means the station was offline (or missed the hours before dawn) on a day when a frost could have changed the answer. Averages use certain dates only.
+    </p>
+  </div>
+  {% endif %}
+</section>
+{% endtimezone %}
+{% endblock %}

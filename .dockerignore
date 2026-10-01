@@ -1,0 +1,16 @@
+.git
+.env
+.env.*
+!.env.example
+!.env.docker.example
+venv/
+.venv/
+bin/
+staticfiles/
+__pycache__/
+*.py[cod]
+*.log
+db.sqlite3*
+CLAUDE.md
+.claude/
+deploy-to-prod.sh

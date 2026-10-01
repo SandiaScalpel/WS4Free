@@ -1,0 +1,19 @@
+{% extends "weather/base_generic.html" %}
+{% block title %}Secure your account · WS4Free{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-lg pt-6">
+  <div class="card p-6 sm:p-8">
+    <div class="mb-4 grid size-11 place-items-center rounded-xl bg-warn/15 text-warn">
+      <svg class="size-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6l-8-3Z"/><path d="M12 9v4m0 3h.01"/></svg>
+    </div>
+    <h1 class="text-xl font-bold">Turn on two-factor authentication</h1>
+    <p class="mt-2 text-sm text-muted">Your account has no second factor yet. Add an authenticator app or a passkey so a leaked password alone can't get anyone in.</p>
+    <p class="mt-2 text-sm text-muted">You'll see this reminder each time you sign in until it's set up.</p>
+    <div class="mt-6 flex flex-wrap gap-2">
+      <a href="{% url 'two_factor:setup' %}" class="btn btn-primary">Set up authenticator app</a>
+      <a href="{% url 'accounts:settings' %}#passkeys" class="btn btn-secondary">Add a passkey</a>
+      <a href="{% url 'accounts:2fa-skip' %}" class="btn btn-ghost ml-auto">Skip for now</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

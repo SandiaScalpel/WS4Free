@@ -1,0 +1,26 @@
+{% extends "weather/base_generic.html" %}
+{% block title %}Site settings · {{ site.site_title }}{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-3xl">
+  <h1 class="text-2xl font-bold">Site settings</h1>
+  <p class="mt-1 text-sm text-muted">How the site presents itself to visitors.</p>
+  <form method="post" class="mt-6 space-y-6" novalidate>
+    {% csrf_token %}
+    {% if form.errors %}<div class="alert alert-error" role="alert">Nothing was saved. Please fix the highlighted fields below.</div>{% endif %}
+    <section class="card p-6">
+      <h2 class="text-base font-semibold">Identity</h2>
+      <div class="mt-4">
+        {% include "weather/partials/field.html" with field=form.site_title %}
+        {% include "weather/partials/field.html" with field=form.tagline %}
+        {% include "weather/partials/field.html" with field=form.about %}
+      </div>
+    </section>
+    <section class="card p-6">
+      <h2 class="text-base font-semibold">Home page</h2>
+      <div class="mt-4">{% include "weather/partials/field.html" with field=form.default_station %}</div>
+      <p class="mt-3 text-sm text-muted">With one public station, visitors land straight on its dashboard. Whether each station is public is set in that station's settings.</p>
+    </section>
+    <div class="flex justify-end"><button type="submit" class="btn btn-primary">Save site settings</button></div>
+  </form>
+</div>
+{% endblock %}

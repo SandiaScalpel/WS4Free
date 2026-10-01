@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+/staticfiles/
+media/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+!.env.docker.example
+
+# Tailwind standalone CLI (downloaded by scripts/build-css.sh)
+/bin/
+
+# Private, deployment-specific notes and scripts
+CLAUDE.md
+.claude/
+deploy-to-prod.sh
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*~
+
+# Coverage / testing
+.coverage
+htmlcov/
+.pytest_cache/

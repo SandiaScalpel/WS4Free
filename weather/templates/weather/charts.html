@@ -1,0 +1,101 @@
+{% extends "weather/base_generic.html" %}
+{% load static %}
+{% block title %}Charts · {{ station.name }} · {{ site.site_title }}{% endblock %}
+{% block extra_head %}
+<script defer src="{% static 'weather/vendor/echarts.min.js' %}"></script>
+<script defer src="{% static 'weather/js/charts.js' %}"></script>
+{% endblock %}
+{% block content %}
+{% include "weather/partials/station_title.html" with tab="charts" %}
+
+<div class="mt-6" x-data="chartsPage({ dataUrl: '{% url 'weather:station-chart-data' station.slug %}', years: {{ years|default:'[]' }} })" x-cloak>
+
+  {# ── One filter row; it scopes History and the wind rose below. ─────────── #}
+  <div class="sticky top-16 z-30 -mx-4 flex flex-wrap items-center gap-2 border-b border-line/70 bg-bg/85 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-xl sm:border">
+    <div class="flex max-w-full overflow-x-auto rounded-lg border border-line bg-surface p-0.5 text-sm whitespace-nowrap" role="group" aria-label="Date range">
+      <template x-for="p in presets" :key="p.value">
+        <button type="button" class="rounded-md px-3 py-1.5 font-medium"
+                :class="range === p.value ? 'bg-accent-soft text-accent' : 'text-muted hover:text-ink'"
+                :aria-pressed="range === p.value" @click="setPreset(p.value)" x-text="p.label"></button>
+      </template>
+      <button type="button" class="rounded-md px-3 py-1.5 font-medium" :class="range === 'custom' ? 'bg-accent-soft text-accent' : 'text-muted hover:text-ink'"
+              :aria-pressed="range === 'custom'" @click="range = 'custom'">Custom</button>
+    </div>
+    <form x-show="range === 'custom'" class="flex flex-wrap items-center gap-2 text-sm" @submit.prevent="applyCustom()">
+      <label class="sr-only" for="range-start">From</label>
+      <input id="range-start" type="date" x-model="start" class="!w-auto !py-1.5">
+      <span class="text-muted">to</span>
+      <label class="sr-only" for="range-end">To</label>
+      <input id="range-end" type="date" x-model="end" class="!w-auto !py-1.5">
+      <button type="submit" class="btn btn-primary btn-sm">Show</button>
+    </form>
+    <div class="ml-auto flex items-center gap-2 text-sm">
+      <span class="badge bg-surface-2 text-muted" x-show="history" x-text="resolutionLabel"></span>
+      <button type="button" class="btn btn-ghost btn-sm" @click="resetZoom()" title="Reset zoom">Reset zoom</button>
+      <a class="btn btn-secondary btn-sm" :href="csvUrl" download>Download CSV</a>
+    </div>
+  </div>
+
+  <p class="mt-3 text-xs text-faint">Scroll or pinch on a chart to zoom, drag to pan. All charts move together.</p>
+
+  {# ── History ─────────────────────────────────────────────────────────────── #}
+  <div class="mt-4 grid gap-4 transition-opacity" :class="loading.history ? 'opacity-60' : ''" aria-live="polite">
+    <template x-for="c in historyCharts" :key="c.key">
+      <section class="card min-w-0 p-5" :aria-labelledby="'h-' + c.key">
+        <div class="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 class="text-sm font-semibold" :id="'h-' + c.key" x-text="c.title"></h2>
+          <span class="text-xs text-faint" x-text="c.note"></span>
+        </div>
+        <div class="mt-2" :class="c.tall ? 'h-64' : 'h-44'" :data-history="c.key" role="img" :aria-label="c.title + ' chart'"></div>
+      </section>
+    </template>
+    <p class="text-sm text-muted" x-show="history && history.series.time.length === 0">No readings in this range.</p>
+  </div>
+
+  {# ── Wind rose + calendar ────────────────────────────────────────────────── #}
+  <div class="mt-4 grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+    <section class="card min-w-0 p-5" aria-labelledby="rose-title" :class="loading.rose ? 'opacity-60' : ''">
+      <div class="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 id="rose-title" class="text-sm font-semibold">Wind rose</h2>
+        <span class="text-xs text-faint" x-show="rose" x-text="rose ? `Calm ${rose.calm_pct}% · ${rose.hours} h of data` : ''"></span>
+      </div>
+      <p class="mt-1 text-xs text-muted">Share of time the wind blew <em>from</em> each direction, for the range above.</p>
+      <div class="mt-2 h-80" data-rose role="img" aria-label="Wind rose: share of time by direction and speed"></div>
+    </section>
+
+    {# min-w-0: a grid item otherwise grows to its content (the 44rem calendar) and widens the page. #}
+    <section class="card min-w-0 p-5" aria-labelledby="cal-title" :class="loading.calendar ? 'opacity-60' : ''">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <h2 id="cal-title" class="text-sm font-semibold">Calendar</h2>
+        <div class="flex items-center gap-2 text-sm">
+          <label class="sr-only" for="cal-metric">Measure</label>
+          <select id="cal-metric" x-model="calMetric" @change="loadCalendar()" class="!w-auto !py-1.5">
+            <option value="high">Daily high</option><option value="low">Daily low</option><option value="rain">Daily rain</option>
+          </select>
+          <label class="sr-only" for="cal-year">Year</label>
+          <select id="cal-year" x-model.number="calYear" @change="loadCalendar()" class="!w-auto !py-1.5">
+            <template x-for="y in years.slice().reverse()" :key="y"><option :value="y" x-text="y" :selected="y === calYear"></option></template>
+          </select>
+        </div>
+      </div>
+      <p class="mt-1 text-xs text-muted">Click a day to open it in History. Blank days have too little data.</p>
+      <div class="mt-2 overflow-x-auto"><div class="h-64 min-w-[44rem]" data-calendar role="img" aria-label="Calendar heatmap"></div></div>
+    </section>
+  </div>
+
+  {# ── Year over year ──────────────────────────────────────────────────────── #}
+  <section class="card mt-4 p-5" aria-labelledby="yoy-title" :class="loading.yoy ? 'opacity-60' : ''">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h2 id="yoy-title" class="text-sm font-semibold">Year over year</h2>
+      <label class="sr-only" for="yoy-metric">Measure</label>
+      <select id="yoy-metric" x-model="yoyMetric" @change="loadYoy()" class="!w-auto !py-1.5 text-sm">
+        <option value="rain">Rain, cumulative</option>
+        <option value="high">Daily high, 7-day average</option>
+        <option value="low">Daily low, 7-day average</option>
+      </select>
+    </div>
+    <p class="mt-1 text-xs text-muted">Click a year in the legend to hide or show it. Gaps are days with too little data.</p>
+    <div class="mt-2 h-80" data-yoy role="img" aria-label="Year-over-year comparison"></div>
+  </section>
+</div>
+{% endblock %}

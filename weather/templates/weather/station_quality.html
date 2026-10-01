@@ -1,0 +1,72 @@
+{% extends "weather/base_generic.html" %}
+{% load tz humanize %}
+{% block title %}Data quality · {{ station.name }} · {{ site.site_title }}{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-4xl">
+  {% include "weather/partials/station_header.html" %}
+  {% timezone station.timezone %}
+
+  <p class="mt-6 max-w-prose text-sm text-muted">
+    Mark readings you know are wrong (a failing sensor, a knocked-over rain gauge) so charts, records,
+    frost dates and reports ignore them. Nothing is deleted: the original readings are kept and come back
+    if you remove the exclusion.
+  </p>
+
+  <section id="exclusions" class="mt-6" {% if busy %}hx-get="{{ request.path }}" hx-trigger="every 4s" hx-select="#exclusions" hx-swap="outerHTML" hx-headers='{"X-Poll": "1"}'{% endif %}>
+    <h2 class="text-base font-semibold">Exclusions</h2>
+    {% if exclusions %}
+    <ul class="mt-3 space-y-3">
+      {% for e in exclusions %}
+      <li class="card flex flex-wrap items-start justify-between gap-4 p-5">
+        <div class="min-w-0">
+          <p class="font-medium">{{ e.start|date:"M j, Y g:i A" }} – {% if e.end %}{{ e.end|date:"M j, Y g:i A" }}{% else %}<span class="text-warn">ongoing</span>{% endif %}</p>
+          <p class="mt-1 flex flex-wrap gap-1.5">{% for label in e.group_labels %}<span class="badge bg-surface-2 text-ink">{{ label }}</span>{% endfor %}</p>
+          {% if e.reason %}<p class="mt-2 text-sm text-muted">{{ e.reason }}</p>{% endif %}
+          <p class="mt-2 text-xs text-faint">
+            {% if e.status == 'applied' %}{{ e.readings|intcomma }} reading{{ e.readings|pluralize }} set aside{% elif e.status == 'pending' %}<span class="text-accent">Setting readings aside…</span>{% elif e.status == 'removing' %}<span class="text-accent">Restoring readings…</span>{% else %}<span class="text-bad">Failed — see exclusions.log on the server</span>{% endif %}
+            · added {{ e.created_at|date:"M j, Y" }}{% if e.created_by %} by {{ e.created_by.get_username }}{% endif %}
+          </p>
+        </div>
+        {% if e.status == 'applied' or e.status == 'failed' %}
+        <form method="post" action="{% url 'weather:station-quality-remove' station.slug e.pk %}"
+              onsubmit="return confirm('Restore the original readings for this period?')">
+          {% csrf_token %}<button type="submit" class="btn btn-secondary btn-sm">Remove</button>
+        </form>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="card mt-3 p-5 text-sm text-muted">No exclusions. All recorded readings are used.</p>
+    {% endif %}
+  </section>
+
+  <section class="card mt-8 p-6" aria-labelledby="add-title">
+    <h2 id="add-title" class="text-base font-semibold">Exclude a period</h2>
+    <p class="mt-1 text-sm text-muted">Times are in the station's time zone ({{ station.timezone }}).</p>
+    <form method="post" class="mt-4 space-y-4" novalidate>
+      {% csrf_token %}
+      {% if form.non_field_errors %}<ul class="errorlist nonfield">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+      <div class="grid gap-4 sm:grid-cols-2 [&_.field+.field]:mt-0">
+        {% include "weather/partials/field.html" with field=form.start %}
+        {% include "weather/partials/field.html" with field=form.end %}
+      </div>
+      <fieldset>
+        <legend class="mb-2 text-sm font-medium">{{ form.groups.label }}</legend>
+        <div class="grid gap-2 sm:grid-cols-2">
+          {% for choice in form.groups %}
+          <label class="m-0 flex cursor-pointer items-center gap-2.5 rounded-lg border border-line px-3 py-2 text-sm font-normal hover:bg-surface-2">
+            {{ choice.tag }} {{ choice.choice_label }}
+          </label>
+          {% endfor %}
+        </div>
+        <span class="form-help">Excluding temperature or humidity also removes dew point, which is calculated from both.</span>
+        {{ form.groups.errors }}
+      </fieldset>
+      {% include "weather/partials/field.html" with field=form.reason %}
+      <div class="flex justify-end"><button type="submit" class="btn btn-primary">Exclude readings</button></div>
+    </form>
+  </section>
+  {% endtimezone %}
+</div>
+{% endblock %}

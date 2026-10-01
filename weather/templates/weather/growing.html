@@ -1,0 +1,176 @@
+{% extends "weather/base_generic.html" %}
+{% load static weather_units humanize %}
+{% block title %}Growing · {{ station.name }} · {{ site.site_title }}{% endblock %}
+{% block extra_head %}
+<script defer src="{% static 'weather/vendor/echarts.min.js' %}"></script>
+<script defer src="{% static 'weather/js/charts.js' %}"></script>
+<script defer src="{% static 'weather/js/growing.js' %}"></script>
+{% endblock %}
+{% block content %}
+{% include "weather/partials/station_title.html" with tab="growing" %}
+
+{# ── Growing degree days ─────────────────────────────────────────────────── #}
+<section class="mt-6" aria-labelledby="gdd-title" id="gdd">
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h2 id="gdd-title" class="text-xl font-bold">Growing degree days</h2>
+      <p class="mt-0.5 max-w-prose text-sm text-muted">Heat accumulated for crop development each season, {{ season_label }}. Days are capped and floored at the crop's limits, the way extension services count them.</p>
+    </div>
+    <form method="get" action="#gdd" class="text-sm">
+      <input type="hidden" name="chill" value="{{ chill_model }}">
+      <label for="crop" class="sr-only">Crop</label>
+      <select id="crop" name="crop" class="!w-auto !py-1.5" onchange="this.form.submit()">
+        {% for p in presets %}<option value="{{ p.key }}" {% if p.key == preset.key %}selected{% endif %}>{{ p.label }}</option>{% endfor %}
+      </select>
+      <noscript><button class="btn btn-secondary btn-sm">Show</button></noscript>
+    </form>
+  </div>
+
+  <div class="mt-4 grid gap-4 sm:grid-cols-3">
+    <div class="card p-5 sm:col-span-1">
+      <p class="text-sm text-muted">This season so far</p>
+      <p class="mt-1 text-4xl font-semibold tracking-tight">{% if gdd_total is not None %}{{ gdd_total|floatformat:0|intcomma }}{% else %}—{% endif %}</p>
+      <p class="mt-1 text-xs text-faint">{{ units|unit_label:"temp" }}·days{% if gdd_missing %} · {{ gdd_missing }} day{{ gdd_missing|pluralize }} without full data not counted{% endif %}</p>
+    </div>
+    <div class="card p-5">
+      <p class="text-sm text-muted">Average by this date</p>
+      <p class="mt-1 text-4xl font-semibold tracking-tight">{% if gdd_avg is not None %}{{ gdd_avg|floatformat:0|intcomma }}{% else %}—{% endif %}</p>
+      <p class="mt-1 text-xs text-faint">{% if gdd_avg_years %}Over {{ gdd_avg_years }} earlier season{{ gdd_avg_years|pluralize }} with near-complete data{% else %}Needs an earlier season with near-complete data{% endif %}</p>
+    </div>
+    <div class="card p-5">
+      <p class="text-sm text-muted">Compared with average</p>
+      <p class="mt-1 text-4xl font-semibold tracking-tight">{% if gdd_delta is not None %}{% if gdd_delta >= 0 %}+{% endif %}{{ gdd_delta|floatformat:0|intcomma }}{% else %}—{% endif %}</p>
+      <p class="mt-1 text-xs text-faint">{% if gdd_delta is not None %}{% if gdd_delta >= 0 %}Ahead of{% else %}Behind{% endif %} a typical season by this date{% else %}Ahead of or behind a typical season{% endif %}</p>
+    </div>
+  </div>
+
+  <figure class="card mt-4 p-5">
+    <figcaption class="flex flex-wrap items-baseline justify-between gap-2">
+      <span class="text-sm font-semibold">Accumulated growing degree days by year</span>
+      <span class="text-xs text-faint">Click a year to hide or show it</span>
+    </figcaption>
+    <div class="mt-2 h-72" data-g="gdd" role="img" aria-label="Accumulated growing degree days, one line per year"></div>
+  </figure>
+
+  <div class="card relative mt-4 overflow-x-auto">
+    <table class="w-full text-sm [&_td]:whitespace-nowrap">
+      <caption class="sr-only">Season totals</caption>
+      <thead class="text-left text-xs text-faint"><tr class="border-b border-line">
+        <th scope="col" class="px-5 py-3 font-medium">Season</th>
+        <th scope="col" class="px-5 py-3 text-right font-medium">Total ({{ units|unit_label:"temp" }}·days)</th>
+        <th scope="col" class="px-5 py-3 text-right font-medium">Days not counted</th>
+      </tr></thead>
+      <tbody class="divide-y divide-line tabular-nums">
+        {% for s in gdd_seasons %}
+        <tr><th scope="row" class="px-5 py-2.5 text-left font-semibold">{{ s.year }}{% if not s.complete %} <span class="badge bg-accent-soft font-normal text-accent">in progress</span>{% endif %}</th>
+            <td class="px-5 py-2.5 text-right">{{ s.total|floatformat:0|intcomma }}</td>
+            <td class="px-5 py-2.5 text-right {% if s.missing > 10 %}text-warn{% else %}text-muted{% endif %}">{{ s.missing }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{# ── Chill ───────────────────────────────────────────────────────────────── #}
+<section class="mt-10" aria-labelledby="chill-title" id="chill">
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h2 id="chill-title" class="text-xl font-bold">Winter chill</h2>
+      <p class="mt-0.5 max-w-prose text-sm text-muted">Cold that fruit trees need to break dormancy, counted from {% if chart_data.chill_start.0 == 11 %}November 1 to the end of February{% else %}May 1 to the end of August{% endif %}. Most apples need 800–1,200 chill hours; many peaches 400–800.</p>
+    </div>
+    <div class="flex rounded-lg border border-line bg-surface p-0.5 text-sm" role="group" aria-label="Chill model">
+      {% for key, label in chill_models %}
+      <a href="?crop={{ preset.key }}&chill={{ key }}#chill" class="rounded-md px-3 py-1.5 font-medium no-underline {% if key == chill_model %}bg-accent-soft text-accent{% else %}text-muted hover:text-ink{% endif %}" {% if key == chill_model %}aria-current="true"{% endif %}>{{ label }}</a>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+    <div class="card relative overflow-x-auto">
+      <table class="w-full text-sm [&_td]:whitespace-nowrap">
+        <caption class="sr-only">Chill by winter</caption>
+        <thead class="text-left text-xs text-faint"><tr class="border-b border-line">
+          <th scope="col" class="px-5 py-3 font-medium">Winter</th>
+          <th scope="col" class="px-5 py-3 text-right font-medium">{% if chill_model == 'utah' %}Units{% else %}Hours{% endif %}</th>
+          <th scope="col" class="px-5 py-3 text-right font-medium">Hours missing</th>
+        </tr></thead>
+        <tbody class="divide-y divide-line tabular-nums">
+          {% for s in chill_seasons %}
+          <tr><th scope="row" class="px-5 py-2.5 text-left font-semibold">{{ s.label }}{% if not s.complete %} <span class="badge bg-accent-soft font-normal text-accent">in progress</span>{% endif %}</th>
+              <td class="px-5 py-2.5 text-right">{{ s.total|floatformat:0|intcomma }}</td>
+              <td class="px-5 py-2.5 text-right {% if s.missing_hours > 72 %}text-warn{% else %}text-muted{% endif %}">{{ s.missing_hours|intcomma }}</td></tr>
+          {% empty %}
+          <tr><td colspan="3" class="px-5 py-4 text-muted">No winter data yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <figure class="card min-w-0 p-5">
+      <figcaption class="text-sm font-semibold">Accumulated by winter <span class="font-normal text-muted">· {{ chart_data.chill_label }}</span></figcaption>
+      <div class="mt-2 h-64" data-g="chill" role="img" aria-label="Accumulated chill, one line per winter"></div>
+    </figure>
+  </div>
+</section>
+
+{# ── Evapotranspiration ──────────────────────────────────────────────────── #}
+<section class="mt-10" aria-labelledby="et-title" id="et">
+  <h2 id="et-title" class="text-xl font-bold">Evapotranspiration</h2>
+  <p class="mt-0.5 max-w-prose text-sm text-muted">Reference ET₀: the water a well-watered grass surface would use, the starting point for irrigation (multiply by a crop coefficient for a specific plant).</p>
+  {% if not has_location %}
+  <p class="alert alert-warning mt-4">Set the station's latitude in its settings to calculate evapotranspiration.</p>
+  {% else %}
+  <div class="mt-4 grid gap-4 sm:grid-cols-3">
+    <div class="card p-5">
+      <p class="text-sm text-muted">ET₀, last 7 days</p>
+      <p class="mt-1 text-4xl font-semibold tracking-tight">{{ week_et0|rain:units }}</p>
+      <p class="mt-1 text-xs text-faint">{{ week_days }} of 7 days estimated</p>
+    </div>
+    <div class="card p-5">
+      <p class="text-sm text-muted">Rain, last 7 days</p>
+      <p class="mt-1 text-4xl font-semibold tracking-tight">{{ week_rain|rain:units }}</p>
+    </div>
+    <div class="card p-5">
+      <p class="text-sm text-muted">Water balance, last 7 days</p>
+      <p class="mt-1 text-4xl font-semibold tracking-tight">{% if week_balance >= 0 %}+{% endif %}{{ week_balance|rain:units }}</p>
+      <p class="mt-1 text-xs text-faint">Rain minus ET₀; negative means plants are drawing down soil water</p>
+    </div>
+  </div>
+
+  <figure class="card mt-4 p-5">
+    <figcaption class="flex flex-wrap items-baseline justify-between gap-2">
+      <span class="text-sm font-semibold">Daily ET₀ and rain, last 30 days</span>
+      <span class="text-xs text-faint">FAO-56 Penman–Monteith; Hargreaves on days with incomplete data</span>
+    </figcaption>
+    <div class="mt-2 h-60" data-g="et0" role="img" aria-label="Daily reference evapotranspiration and rain over the last 30 days"></div>
+  </figure>
+
+  <div class="card relative mt-4 overflow-x-auto">
+    <table class="w-full text-sm [&_td]:whitespace-nowrap">
+      <caption class="sr-only">Evapotranspiration and rain by month this year</caption>
+      <thead class="text-left text-xs text-faint"><tr class="border-b border-line">
+        <th scope="col" class="px-5 py-3 font-medium">Month</th>
+        <th scope="col" class="px-5 py-3 text-right font-medium">ET₀, station<span class="block font-normal">Penman–Monteith</span></th>
+        <th scope="col" class="px-5 py-3 text-right font-medium">ET₀, temperature-based<span class="block font-normal">Hargreaves</span></th>
+        <th scope="col" class="px-5 py-3 text-right font-medium">Rain</th>
+        <th scope="col" class="px-5 py-3 text-right font-medium">Days estimated</th>
+      </tr></thead>
+      <tbody class="divide-y divide-line tabular-nums">
+        {% for m in et0_months %}
+        <tr><th scope="row" class="px-5 py-2.5 text-left font-semibold">{{ m.month|date:"F" }}</th>
+            <td class="px-5 py-2.5 text-right">{{ m.et0|rain:units }}</td>
+            <td class="px-5 py-2.5 text-right text-muted">{{ m.hg|rain:units }}</td>
+            <td class="px-5 py-2.5 text-right">{{ m.rain|rain:units }}</td>
+            <td class="px-5 py-2.5 text-right text-muted">{{ m.days }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="border-t border-line px-5 py-3 text-xs text-muted">
+      Penman–Monteith uses this station's wind, humidity and sunshine, and assumes the wind sensor sees open-field
+      wind (its height is set in the station's settings). A sheltered backyard sensor reads low wind, which makes
+      this estimate low; the temperature-based Hargreaves estimate isn't affected by siting.
+    </p>
+  </div>
+  {% endif %}
+</section>
+
+{{ chart_data|json_script:"growing-data" }}
+{% endblock %}
