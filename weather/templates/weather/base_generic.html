@@ -38,6 +38,7 @@
       {% block nav %}
       <a href="{% url 'weather:home' %}" class="nav-link" {% if request.resolver_match.url_name == 'home' or request.resolver_match.url_name == 'station' %}aria-current="page"{% endif %}>Dashboard</a>
       <a href="{% url 'weather:charts' %}" class="nav-link" {% if request.resolver_match.url_name == 'station-charts' %}aria-current="page"{% endif %}>Charts</a>
+      <a href="{% url 'weather:help' %}" class="nav-link" {% if request.resolver_match.url_name == 'help' or request.resolver_match.url_name == 'help-page' %}aria-current="page"{% endif %}>Help</a>
       {% endblock %}
     </nav>
 
@@ -81,7 +82,7 @@
     </div>
   </div>
   <nav x-show="menu" x-cloak x-transition class="border-t border-line px-4 py-2 md:hidden" aria-label="Main (mobile)">
-    <div class="flex flex-col gap-1">{% block nav_mobile %}<a href="{% url 'weather:home' %}" class="nav-link">Dashboard</a><a href="{% url 'weather:charts' %}" class="nav-link">Charts</a>{% endblock %}</div>
+    <div class="flex flex-col gap-1">{% block nav_mobile %}<a href="{% url 'weather:home' %}" class="nav-link">Dashboard</a><a href="{% url 'weather:charts' %}" class="nav-link">Charts</a><a href="{% url 'weather:help' %}" class="nav-link">Help</a>{% endblock %}</div>
   </nav>
 </header>
 
@@ -103,6 +104,8 @@
 
 <footer class="border-t border-line/70 py-6 text-center text-xs text-faint">
   {% if site.site_title != "WS4Free" %}{{ site.site_title }} · powered by WS4Free, open-source weather station software{% else %}WS4Free · open-source weather station software{% endif %}
+  · <a href="{% url 'weather:help-page' 'changelog' %}" class="text-faint hover:text-muted" title="What's new">v{{ ws4free_version }}</a>
+  · <a href="{% url 'weather:help' %}" class="text-faint hover:text-muted">Help</a>
 </footer>
 
 {% block extra_body %}{% endblock %}

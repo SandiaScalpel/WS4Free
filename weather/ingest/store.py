@@ -93,6 +93,9 @@ def record_push(station, reading, source):
     update_latest(station, reading, source)
     mark_dirty(station.pk, bucket)
     compute_rain_increments(station, since=bucket)
+    if reading.extra:
+        from ..sensors import detect
+        detect(station, reading.extra)
     return obs
 
 
@@ -124,6 +127,12 @@ def record_archive(station, readings, source, batch_size=500):
 
     newest = max(readings, key=lambda r: r.timestamp)
     update_latest(station, newest, source)
+    from ..sensors import detect
+    seen = {}
+    for reading in readings:
+        seen.update(reading.extra)
+    if seen:
+        detect(station, seen)
     if new_rows:
         from ..calibration import apply_to_new_rows as calibrate_new_rows
         from ..quality import apply_to_new_rows

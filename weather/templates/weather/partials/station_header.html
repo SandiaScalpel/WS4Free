@@ -1,4 +1,4 @@
-{# Header + tabs shared by the owner-only station pages. Needs `station` and `tab`. #}
+{% load weather_units %}{# Header + tabs shared by the owner-only station pages. Needs `station` and `tab`. #}
 <a href="{% url 'weather:station' station.slug %}" class="text-sm no-underline">&larr; Dashboard</a>
 <div class="mt-2 flex flex-wrap items-center gap-3">
   <h1 class="text-2xl font-bold">{{ station.name }}</h1>
@@ -9,4 +9,8 @@
   <a href="{% url 'weather:station-settings' station.slug %}" class="-mb-px border-b-2 px-3 pb-2.5 text-sm font-medium no-underline {% if tab == 'settings' %}border-accent text-ink{% else %}border-transparent text-muted hover:text-ink{% endif %}" {% if tab == 'settings' %}aria-current="page"{% endif %}>Settings</a>
   <a href="{% url 'weather:station-setup' station.slug %}" class="-mb-px border-b-2 px-3 pb-2.5 text-sm font-medium no-underline {% if tab == 'console' %}border-accent text-ink{% else %}border-transparent text-muted hover:text-ink{% endif %}" {% if tab == 'console' %}aria-current="page"{% endif %}>Console &amp; uploads</a>
   <a href="{% url 'weather:station-quality' station.slug %}" class="-mb-px border-b-2 px-3 pb-2.5 text-sm font-medium no-underline {% if tab == 'quality' %}border-accent text-ink{% else %}border-transparent text-muted hover:text-ink{% endif %}" {% if tab == 'quality' %}aria-current="page"{% endif %}>Data quality</a>
+  <a href="{% help_url tab %}" class="-mb-px ml-auto inline-flex items-center gap-1 border-b-2 border-transparent px-2 pb-2.5 text-sm text-muted no-underline hover:text-ink" title="Help for this page">
+    <svg class="size-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0ZM8.94 6.94a1.5 1.5 0 1 1 2.12 2.12c-.5.5-1.06.84-1.06 1.69v.25a.75.75 0 0 0 1.5 0v-.25c0-.15.08-.3.4-.6.33-.3.8-.7 1.2-1.3a3 3 0 1 0-5.3-1.94.75.75 0 0 0 1.5.22c.03-.16.1-.32.24-.47ZM10 15a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"/></svg>
+    <span>Help</span>
+  </a>
 </nav>

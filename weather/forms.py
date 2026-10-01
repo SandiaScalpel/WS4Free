@@ -20,10 +20,11 @@ class StationSettingsForm(forms.ModelForm):
 
     class Meta:
         model = Station
-        fields = ['name', 'place', 'is_public', 'timezone', 'latitude', 'longitude', 'ambient_api_enabled']
+        fields = ['name', 'place', 'is_public', 'timezone', 'latitude', 'longitude', 'ambient_api_enabled', 'rain_gauge']
         labels = {
             'is_public': 'Public station',
             'ambient_api_enabled': 'Fill gaps from ambientweather.net',
+            'rain_gauge': 'Rain sensor',
         }
         help_texts = {
             'name': 'Shown on the dashboard and in page titles.',
@@ -55,12 +56,29 @@ class StationSettingsForm(forms.ModelForm):
                                                       'evapotranspiration (a roof-mounted sensor reads windier).')
         h = self.instance.anemometer_height_m or 2.0
         self.initial['anemometer_height'] = round(h * FEET_PER_METER, 1) if self.imperial else round(h, 1)
+        self.fields['rain_gauge'].required = False
+        # One name + public switch per extra sensor the station has reported.
+        from .sensors import KIND_ORDER, describe
+        self.sensor_rows = []
+        known = [(key, conf, describe(key)) for key, conf in (self.instance.sensors or {}).items() if describe(key)]
+        known.sort(key=lambda k: (KIND_ORDER.index(k[2].kind), k[2].channel, k[0]))   # as on the dashboard
+        for i, (key, conf, sensor) in enumerate(known):
+            name_field, public_field = f'sensor_{i}_name', f'sensor_{i}_public'
+            self.fields[name_field] = forms.CharField(max_length=40, required=False, label=f'Name for {key}',
+                                                      widget=forms.TextInput(attrs={'placeholder': sensor.default_label}))
+            self.fields[public_field] = forms.BooleanField(required=False, label='Public')
+            self.initial[name_field] = conf.get('name', '')
+            self.initial[public_field] = bool(conf.get('public'))
+            self.sensor_rows.append({'key': key, 'sensor': sensor, 'name': self[name_field], 'public': self[public_field]})
         self.fields['latitude'].help_text = 'Decimal degrees, north positive.'
         self.fields['longitude'].help_text = 'Decimal degrees, east positive (the Americas are negative).'
 
     @staticmethod
     def timezone_choices():
         return sorted(available_timezones())
+
+    def clean_rain_gauge(self):
+        return self.cleaned_data.get('rain_gauge') or self.instance.rain_gauge or 'auto'
 
     def clean_latitude(self):
         value = self.cleaned_data.get('latitude')
@@ -83,6 +101,11 @@ class StationSettingsForm(forms.ModelForm):
             station.elevation_m = elevation / FEET_PER_METER if self.imperial else elevation
         height = self.cleaned_data['anemometer_height']
         station.anemometer_height_m = height / FEET_PER_METER if self.imperial else height
+        sensors = dict(station.sensors or {})
+        for row in self.sensor_rows:
+            sensors[row['key']] = {'name': self.cleaned_data[row['name'].name].strip(),
+                                   'public': self.cleaned_data[row['public'].name]}
+        station.sensors = sensors
         if commit:
             station.save()
         return station

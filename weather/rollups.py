@@ -17,6 +17,10 @@ Grouping rules that follow from the data model:
     23 or 25 hours long and their coverage is measured against that.
   * Averages are weighted by `interval_s`; min/max read Coalesce(x_min, x) so
     downsampled rows contribute their true extremes.
+  * Extra sensors (weather.sensors) live in the `extra` JSON column, which can't
+    be aggregated portably in SQL; they are summarised in Python, and only for
+    stations that have any. Downsampled rows keep just the last reading of their
+    15 minutes for these.
 """
 import datetime as dt
 import logging
@@ -30,6 +34,7 @@ from django.db.models.functions import Coalesce, Cos, Radians, Sin, TruncDay, Tr
 
 from .ingest.rain import compute_rain_increments
 from .models import DailyRollup, HourlyRollup, Observation, Station
+from .sensors import summarise
 
 log = logging.getLogger(__name__)
 
@@ -135,16 +140,33 @@ def _grouped(station, period_expr, start, end):
     )
 
 
+def _sensor_summaries(station, start, end, period_of):
+    """{period: {key: [mean, min, max]}} for the station's extra sensors in (start, end]."""
+    keys = list(station.sensors or ())
+    if not keys:
+        return {}
+    by_period = {}
+    rows = (Observation.objects.filter(station=station, timestamp__gt=start, timestamp__lte=end)
+            .order_by('timestamp').values_list('timestamp', 'interval_s', 'extra'))
+    for ts, interval_s, extra in rows:
+        if extra:
+            by_period.setdefault(period_of(ts - dt.timedelta(seconds=1)), []).append((interval_s, extra))
+    return {period: summarise(items, keys) for period, items in by_period.items()}
+
+
 def rebuild_hourly(station, since, until):
     """Rebuild hourly rollups for hours starting in [floor_hour(since), until)."""
     start = since.astimezone(dt.UTC).replace(minute=0, second=0, microsecond=0)
     written = 0
+    hour_of = lambda t: t.astimezone(dt.UTC).replace(minute=0, second=0, microsecond=0)  # noqa: E731
     while start < until:
         end = min(start + CHUNK, until)
-        rows = [
-            HourlyRollup(station=station, period_start=row['period'].astimezone(dt.UTC), **_finish(row, 3600))
-            for row in _grouped(station, TruncHour(COVERING, tzinfo=dt.UTC), start, end)
-        ]
+        sensors = _sensor_summaries(station, start, end, hour_of)
+        rows = []
+        for row in _grouped(station, TruncHour(COVERING, tzinfo=dt.UTC), start, end):
+            period = row['period'].astimezone(dt.UTC)
+            rows.append(HourlyRollup(station=station, period_start=period, extra=sensors.get(period, {}),
+                                     **_finish(row, 3600)))
         with transaction.atomic():
             HourlyRollup.objects.filter(station=station, period_start__gte=start, period_start__lt=end).delete()
             HourlyRollup.objects.bulk_create(rows, batch_size=1000)
@@ -166,6 +188,7 @@ def rebuild_daily(station, since_date, until):
     while day <= last_day:
         chunk_end = min(day + dt.timedelta(days=31), last_day + dt.timedelta(days=1))
         start, end = _local_midnight(day, tz), _local_midnight(chunk_end, tz)
+        sensors = _sensor_summaries(station, start, end, lambda t: t.astimezone(tz).date())
         rows = []
         for row in _grouped(station, TruncDay(COVERING, tzinfo=tz), start, end):
             date = row['period'].astimezone(tz).date()
@@ -174,7 +197,7 @@ def rebuild_daily(station, since_date, until):
             # arithmetic in Python and would make every DST day 24 h long.
             length = (_local_midnight(next_day, tz).astimezone(dt.UTC)
                       - _local_midnight(date, tz).astimezone(dt.UTC)).total_seconds()
-            rows.append(DailyRollup(station=station, date=date, **_finish(row, length)))
+            rows.append(DailyRollup(station=station, date=date, extra=sensors.get(date, {}), **_finish(row, length)))
         with transaction.atomic():
             DailyRollup.objects.filter(station=station, date__gte=day, date__lt=chunk_end).delete()
             DailyRollup.objects.bulk_create(rows, batch_size=1000)
@@ -191,7 +214,7 @@ def refresh_station(station, now=None):
     anything written while the rebuild runs sets it again and is picked up next
     time. If the rebuild fails the watermark is restored.
     """
-    station.refresh_from_db(fields=['rollup_dirty_from', 'timezone'])
+    station.refresh_from_db(fields=['rollup_dirty_from', 'timezone', 'sensors'])
     dirty = station.rollup_dirty_from
     if dirty is None:
         return None

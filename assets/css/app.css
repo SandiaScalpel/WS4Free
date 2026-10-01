@@ -213,3 +213,29 @@
     @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium;
   }
 }
+
+/* User guide (docs/guide/*.md rendered by weather.help). Plain Markdown output,
+   styled here because it carries no classes. */
+@layer components {
+  .guide {
+    @apply max-w-prose leading-7 text-ink;
+  }
+  .guide h1 { @apply text-3xl font-bold; }
+  .guide h2 { @apply mt-10 scroll-mt-24 border-t border-line pt-6 text-xl font-semibold; }
+  .guide h3 { @apply mt-6 scroll-mt-24 text-base font-semibold; }
+  .guide p, .guide ul, .guide ol, .guide .guide-table, .guide pre, .guide blockquote { @apply mt-4; }
+  .guide ul { @apply list-disc space-y-1 pl-6; }
+  .guide ol { @apply list-decimal space-y-1 pl-6; }
+  .guide li > ul, .guide li > ol { @apply mt-1; }
+  .guide a { @apply underline decoration-accent/40 underline-offset-2 hover:decoration-accent; }
+  .guide strong { @apply font-semibold; }
+  .guide blockquote { @apply rounded-lg border-l-4 border-accent bg-accent-soft/60 px-4 py-3 text-sm; }
+  .guide blockquote p:first-child { @apply mt-0; }
+  .guide pre { @apply overflow-x-auto rounded-lg bg-surface-2 p-4 text-sm leading-6; }
+  .guide pre code { @apply bg-transparent p-0; }
+  .guide .guide-table { @apply relative max-w-full overflow-x-auto rounded-lg border border-line; }
+  .guide table { @apply w-full text-left text-sm; }
+  .guide th { @apply border-b border-line bg-surface-2 px-3 py-2 font-semibold; }
+  .guide td { @apply border-t border-line px-3 py-2 align-top; }
+  .guide tr:first-child td { @apply border-t-0; }
+}

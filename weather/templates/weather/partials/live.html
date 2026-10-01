@@ -153,5 +153,26 @@
   </section>
   {% endif %}
 </div>
+
+{% if sensor_groups or low_batteries %}
+{# ── Extra sensors (weather.sensors) ──────────────────────────────────────── #}
+<section class="mt-4 card p-6" aria-labelledby="sensors-label">
+  <div class="flex flex-wrap items-start justify-between gap-3">
+    <h2 id="sensors-label" class="text-sm font-medium text-muted">More sensors</h2>
+    {% if low_batteries %}<p class="badge bg-warn/15 text-warn" role="status">Low battery: {{ low_batteries|join:", " }}</p>{% endif %}
+  </div>
+  <ul class="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+    {% for group in sensor_groups %}{% for item in group.items %}
+    <li class="relative min-w-0 rounded-lg bg-surface-2 px-4 py-3">
+      {% if item.private and can_manage %}<span class="badge absolute top-2.5 right-3 bg-surface text-faint" title="Only you can see this">Private</span>{% endif %}
+      <p class="truncate text-xs text-faint {% if item.private and can_manage %}pr-16{% endif %}">{{ group.label }}</p>
+      <p class="truncate text-sm text-muted">{{ item.name }}</p>
+      <p class="mt-0.5 text-xl font-semibold tracking-tight sm:text-2xl {% if item.tone == 'bad' %}text-bad{% endif %}">{{ item.value }}</p>
+      {% if item.detail %}<p class="mt-0.5 text-xs {% if item.tone == 'good' %}text-good{% elif item.tone == 'warn' %}text-warn{% elif item.tone == 'warm' %}text-warm{% elif item.tone == 'bad' %}text-bad{% else %}text-faint{% endif %}">{{ item.detail }}</p>{% endif %}
+    </li>
+    {% endfor %}{% endfor %}
+  </ul>
+</section>
+{% endif %}
 {{ chart_data|json_script:"chart-data" }}
 {% endtimezone %}

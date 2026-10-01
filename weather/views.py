@@ -14,6 +14,7 @@ from django.views.decorators.http import require_POST
 
 from . import agro, almanac, charts, dashboard, reports
 from . import calibration, quality
+from . import help as help_docs
 from .forms import CalibrationForm, ExclusionForm, SiteSettingsForm, StationSettingsForm
 from .ingest.store import mark_dirty
 from .models import DailyRollup, DataExclusion, Observation, SiteSettings, Station, TempCalibration
@@ -257,14 +258,16 @@ def station_chart_data(request, slug):
     prefs = prefs_for_request(request)
     kind = request.GET.get('kind', 'history')
     meta = {'units': prefs.as_json(), 'tz': station.timezone}
+    owner = request.user.is_authenticated and (request.user.is_staff or station.owner_id == request.user.pk)
     if kind == 'history':
         start, end = _parse_range(request, station)
         if request.GET.get('format') == 'csv':
-            response = HttpResponse(charts.history_csv(station, start, end, prefs), content_type='text/csv; charset=utf-8')
+            response = HttpResponse(charts.history_csv(station, start, end, prefs, include_private=owner),
+                                    content_type='text/csv; charset=utf-8')
             name = f"{station.slug}-{start.astimezone(station.tzinfo):%Y%m%d}-{end.astimezone(station.tzinfo):%Y%m%d}.csv"
             response['Content-Disposition'] = f'attachment; filename="{name}"'
             return response
-        data = charts.history(station, start, end, prefs)
+        data = charts.history(station, start, end, prefs, include_private=owner)
     elif kind == 'rose':
         start, end = _parse_range(request, station)
         data = charts.wind_rose(station, start, end, prefs)
@@ -569,4 +572,24 @@ def station_growing(request, slug):
         'et0_months': [months[k] for k in sorted(months)],
         'chart_data': chart_data,
         'has_location': station.latitude is not None,
+    })
+
+
+# ── User guide ────────────────────────────────────────────────────────────────
+
+def help_page(request, slug='index'):
+    """The user guide (docs/guide/*.md) and changelog, readable by anyone: it
+    describes the software, never a particular station."""
+    if slug == 'index' and request.resolver_match.url_name == 'help-page':
+        return redirect('weather:help', permanent=True)
+    rendered = help_docs.page(slug)
+    if rendered is None:
+        raise Http404('No such help page')
+    title, html, sections = rendered
+    slugs = [s for s, _ in help_docs.PAGES]
+    i = slugs.index(slug)
+    return render(request, 'weather/help.html', {
+        'title': title, 'body': html, 'sections': sections, 'slug': slug, 'pages': help_docs.PAGES,
+        'previous': help_docs.PAGES[i - 1] if i > 0 else None,
+        'next': help_docs.PAGES[i + 1] if i + 1 < len(slugs) else None,
     })

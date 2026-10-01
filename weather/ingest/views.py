@@ -59,7 +59,7 @@ def _ingest(request, token, rest, protocol, parser, source):
     params = _params(request, rest)
     max_skew = getattr(settings, 'INGEST_MAX_CLOCK_SKEW_S', 900)
     try:
-        reading = parser(params, timezone.now(), max_skew)
+        reading = parser(params, timezone.now(), max_skew, rain_gauge=station.rain_gauge)
     except ParseError as exc:
         _capture(station, request, protocol, params, False, f'parse error: {exc}')
         return HttpResponseBadRequest(f'{exc}\n', content_type='text/plain')

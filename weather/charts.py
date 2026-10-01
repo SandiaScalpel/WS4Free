@@ -15,6 +15,7 @@ from django.db.models import Case, F, FloatField, IntegerField, Min, Sum, When
 from django.db.models.functions import Floor, Mod
 
 from .models import DailyRollup, HourlyRollup, Observation
+from .sensors import station_sensors
 
 RAW_MAX = dt.timedelta(days=3)
 HOURLY_MAX = dt.timedelta(days=120)
@@ -69,20 +70,81 @@ HISTORY_COLUMNS = ('time', 'temp', 'temp_min', 'temp_max', 'dewpoint', 'humidity
                    'rain', 'pressure', 'solar', 'uv')
 
 
-def history(station, start, end, prefs):
-    """Columnar series for (start, end]. Times are epoch ms of each bucket's start."""
+# Extra-sensor values in the viewer's units, by unit kind (weather.sensors).
+SENSOR_DIGITS = {'temp': 1, 'pct': 0, 'pm': 1, 'ppm': 0, 'count': 0}
+SENSOR_LINES_PER_CHART = 8      # the categorical palette's size; more channels → another chart
+
+
+def _sensor_display(sensor, si, prefs):
+    if si is None:
+        return None
+    return _r(prefs.t(si) if sensor.unit_kind == 'temp' else si, SENSOR_DIGITS.get(sensor.unit_kind, 1))
+
+
+def _strikes(times_ms, counters, tzinfo):
+    """Lightning: consoles report strikes *so far today*. Turn the counter at the end
+    of each bucket into strikes during it (a new local day starts from zero)."""
+    out, prev, prev_day = [], None, None
+    for ms, value in zip(times_ms, counters):
+        day = dt.datetime.fromtimestamp(ms / 1000, tzinfo).date()
+        if value is None:
+            out.append(None)
+            continue
+        if prev is not None and day == prev_day and value >= prev:
+            out.append(value - prev)
+        else:
+            out.append(value)
+        prev, prev_day = value, day
+    return out
+
+
+def _sensor_charts(sensors, prefs):
+    """Chart definitions for the History section: one chart per kind (split past 8 channels)."""
+    units = {'temp': prefs.label('temp'), 'pct': '%', 'pm': 'µg/m³', 'ppm': 'ppm', 'count': 'strikes'}
+    by_kind = {}
+    for sensor, name in sensors:
+        by_kind.setdefault(sensor.kind, []).append((sensor, name))
+    charts = []
+    for kind, members in by_kind.items():
+        for part in range(0, len(members), SENSOR_LINES_PER_CHART):
+            chunk = members[part:part + SENSOR_LINES_PER_CHART]
+            first = chunk[0][0]
+            # Named so they can't be mistaken for the main charts: "Temperature: Greenhouse (°F)"
+            # for one sensor (no legend then), "Temperature sensors (°F)" for several.
+            if kind == 'lightning':
+                title = 'Lightning strikes'
+            elif len(chunk) == 1:
+                title = f'{first.kind_label}: {chunk[0][1]} ({units[first.unit_kind]})'
+            else:
+                title = f'{first.kind_label} sensors ({units[first.unit_kind]})'
+            charts.append({
+                'key': f'sensor_{kind}_{part}',
+                'title': title,
+                'unit': units[first.unit_kind],
+                'digits': SENSOR_DIGITS.get(first.unit_kind, 1),
+                'bars': kind == 'lightning',
+                'lines': [{'col': f'x:{s.key}', 'name': n} for s, n in chunk],
+            })
+    return charts
+
+
+def history(station, start, end, prefs, include_private=False):
+    """Columnar series for (start, end]. Times are epoch ms of each bucket's start.
+    Extra sensors the viewer may see are added as `x:<upload key>` columns."""
     res = resolution_for(start, end)
     d = prefs.digits
+    sensors = [(s, n) for s, n in station_sensors(station, include_private) if s.chartable]
     if res == 'raw':
         qs = (Observation.objects.filter(station=station, timestamp__gt=start, timestamp__lte=end)
               .order_by('timestamp').values_list('timestamp', 'interval_s', 'temp_c', 'temp_min_c', 'temp_max_c',
                                                 'dewpoint_c', 'humidity', 'wind_speed_ms', 'wind_gust_ms', 'rain_mm',
-                                                'pressure_rel_hpa', 'solar_wm2', 'uv_index'))
+                                                'pressure_rel_hpa', 'solar_wm2', 'uv_index', 'extra'))
         rows = [[int((ts - dt.timedelta(seconds=iv)).timestamp() * 1000),
                  _r(prefs.t(t), d['temp']), _r(prefs.t(tmin), d['temp']), _r(prefs.t(tmax), d['temp']),
                  _r(prefs.t(dp), d['temp']), _r(h, 0), _r(prefs.w(w), 1), _r(prefs.w(g), 1),
                  _r(prefs.r(rain), d['rain'] + 1), _r(prefs.p(p), d['pressure'] + 1), _r(sol, 0), _r(uv, 1)]
-                for ts, iv, t, tmin, tmax, dp, h, w, g, rain, p, sol, uv in qs]
+                + [_sensor_display(s, s.si((extra or {}).get(s.key)), prefs) for s, _ in sensors]
+                for ts, iv, t, tmin, tmax, dp, h, w, g, rain, p, sol, uv, extra in qs]
         step_ms = 300_000
     else:
         model, key = (HourlyRollup, 'period_start') if res == 'hourly' else (DailyRollup, 'date')
@@ -112,35 +174,53 @@ def history(station, start, end, prefs):
                 _r(prefs.p(r.pressure_avg_hpa), d['pressure'] + 1),
                 _r(r.solar_max_wm2 if res == 'daily' else r.solar_avg_wm2, 0),
                 _r(r.uv_max, 1),
+            ] + [
+                # Lightning keeps the counter's highest value (strikes so far today); the rest their mean.
+                _sensor_display(sen, (r.extra.get(sen.key) or [None, None, None])[2 if sen.kind == 'lightning' else 0], prefs)
+                for sen, _ in sensors
             ])
         step_ms = 3_600_000 if res == 'hourly' else 86_400_000
-    rows = _with_gaps(rows, 2 * step_ms + 1)
-    columns = list(zip(*rows)) if rows else [[] for _ in HISTORY_COLUMNS]
+    names = list(HISTORY_COLUMNS) + [f'x:{s.key}' for s, _ in sensors]
+    columns = [list(col) for col in zip(*rows)] if rows else [[] for _ in names]
+    series = dict(zip(names, columns))
+    for sensor, _ in sensors:
+        if sensor.kind == 'lightning' and res != 'daily':
+            col = f'x:{sensor.key}'
+            series[col] = _strikes(series['time'], series[col], station.tzinfo)
+    rows = _with_gaps([list(r) for r in zip(*(series[n] for n in names))] if rows else [], 2 * step_ms + 1)
+    columns = [list(col) for col in zip(*rows)] if rows else [[] for _ in names]
     return {
         'resolution': res,
         'start': int(start.timestamp() * 1000),
         'end': int(end.timestamp() * 1000),
-        'series': {name: list(col) for name, col in zip(HISTORY_COLUMNS, columns)},
+        'series': dict(zip(names, columns)),
+        'sensor_charts': _sensor_charts(sensors, prefs),
     }
 
 
-def history_csv(station, start, end, prefs):
-    data = history(station, start, end, prefs)
+def history_csv(station, start, end, prefs, include_private=False):
+    data = history(station, start, end, prefs, include_private)
     tz = station.tzinfo
     labels = prefs.as_json()['labels']
     header = ['time (' + station.timezone + ')', f'temperature ({labels["temp"]})', f'temp min ({labels["temp"]})',
               f'temp max ({labels["temp"]})', f'dew point ({labels["temp"]})', 'humidity (%)',
               f'wind ({labels["wind"]})', f'gust ({labels["wind"]})', f'rain ({labels["rain"]})',
               f'pressure ({labels["pressure"]})', 'solar (W/m²)', 'UV index']
+    columns = list(HISTORY_COLUMNS[1:])
+    for chart in data['sensor_charts']:
+        unit = chart['unit']
+        for line in chart['lines']:
+            columns.append(line['col'])
+            header.append(f'{line["name"]} ({unit})')
     out = io.StringIO()
     writer = csv.writer(out)
     writer.writerow(header)
     s = data['series']
     for i, ms in enumerate(s['time']):
-        if all(s[c][i] is None for c in HISTORY_COLUMNS[1:]):
+        if all(s[c][i] is None for c in columns):
             continue   # gap marker
         when = dt.datetime.fromtimestamp(ms / 1000, tz).strftime('%Y-%m-%d %H:%M')
-        writer.writerow([when] + ['' if s[c][i] is None else s[c][i] for c in HISTORY_COLUMNS[1:]])
+        writer.writerow([when] + ['' if s[c][i] is None else s[c][i] for c in columns])
     return out.getvalue()
 
 

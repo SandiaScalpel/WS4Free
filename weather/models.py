@@ -71,6 +71,21 @@ class Station(models.Model):
         help_text='Fetch archive records from ambientweather.net (needs AMBIENT_* keys in .env).',
     )
 
+    RAIN_GAUGE_CHOICES = [
+        ('auto', 'Automatic'),
+        ('tipping', 'Tipping-bucket gauge'),
+        ('piezo', 'Piezo (haptic) sensor'),
+    ]
+    rain_gauge = models.CharField(
+        max_length=8, choices=RAIN_GAUGE_CHOICES, default='auto',
+        help_text='Which rain sensor to record when the console reports two (e.g. an Ecowitt WS90 plus a '
+                  'tipping-bucket gauge). Automatic prefers the tipping bucket. Applies to new uploads.',
+    )
+    sensors = models.JSONField(
+        default=dict, blank=True, editable=False,
+        help_text='Extra sensors seen in uploads, keyed by upload name: {"name": "...", "public": bool}.',
+    )
+
     # Earliest observation timestamp written since the rollups last ran; the
     # rollup job recomputes from here and clears it.
     rollup_dirty_from = models.DateTimeField(null=True, blank=True, editable=False)
@@ -294,6 +309,8 @@ class RollupFields(models.Model):
     temp_in_min_c = models.FloatField(null=True, blank=True)
     temp_in_max_c = models.FloatField(null=True, blank=True)
     humidity_in_avg = models.FloatField(null=True, blank=True)
+    extra = models.JSONField(default=dict, blank=True,
+                             help_text='Extra sensors: {upload key: [mean, min, max]} in SI units.')
 
     class Meta:
         abstract = True

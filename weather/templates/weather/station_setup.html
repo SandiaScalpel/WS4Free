@@ -66,6 +66,9 @@
       </div>
     </dl>
     <p class="mt-3 text-xs text-faint">The path is this station's secret. Anyone who has it can upload readings to this station, so don't share it.</p>
+    <p class="mt-3 text-sm text-muted">Using <strong>WeeWX</strong>? In its <code>[[Wunderground]]</code> section set
+      <code class="break-all">server_url = http://{{ host }}{{ ambient_path }}</code>.
+      <a href="{% url 'weather:help-page' 'connecting' %}#weewx">How to set up WeeWX</a></p>
   </section>
 
   <section class="card mt-6 p-6">

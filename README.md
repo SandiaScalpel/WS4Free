@@ -1,10 +1,11 @@
 # WS4Free
 
 Self-hosted history, charts and reports for your personal weather station: a
-modern, open-source alternative to WeeWX and paid cloud history subscriptions.
-It works with Ambient Weather stations and Ecowitt-protocol consoles (most Fine
-Offset–based stations), keeps every reading on your own server, and looks good
-doing it, in light and dark.
+modern, open-source alternative to WeeWX's reports and paid cloud history
+subscriptions. It works with Ambient Weather stations and Ecowitt-protocol
+consoles (most Fine Offset–based stations) directly, and with most other
+hardware through WeeWX. It keeps every reading on your own server, and looks
+good doing it, in light and dark.
 
 ![Dashboard](docs/screenshots/dashboard-light.png)
 
@@ -24,7 +25,11 @@ doing it, in light and dark.
   day counts) with CSV export.
 - **Growing:** growing degree days by crop, winter chill, and FAO-56 reference
   evapotranspiration against rainfall.
-- **Data quality:** exclude a failing sensor's readings without losing them.
+- **Extra sensors:** extra temperature channels, soil, leaf wetness, air
+  quality, CO₂, lightning and leak detectors, each named and public or private.
+- **Data quality:** exclude a failing sensor's readings without losing them, or
+  calibrate a sensor that reads too warm in the sun, fitted against a nearby
+  airport station.
 - **Multiple stations**, each public or private. Per-user display units.
   Two-factor sign-in with passkeys.
 - **Honest about gaps:** outages show as breaks, incomplete days never set
@@ -36,6 +41,14 @@ doing it, in light and dark.
 | ![Growing](docs/screenshots/growing.png) | ![Reports](docs/screenshots/reports.png) |
 
 <p align="center"><img src="docs/screenshots/mobile.png" alt="Dashboard on a phone, dark theme" width="300"></p>
+
+## Documentation
+
+- **[User guide](docs/guide/index.md)**: using WS4Free, from connecting a
+  console to reading the almanac. It's also built into the app under **Help**.
+- **[Changelog](CHANGELOG.md)**: what changed in each release, and anything to
+  do when upgrading.
+- This README covers installing and running the server.
 
 ## Docker
 
@@ -141,7 +154,9 @@ python manage.py import_ambient_stations --owner <your-username>
 ```
 
 Otherwise add the station in the admin (`/admin/` → Stations) with its MAC
-address and time zone.
+address and time zone. For a WeeWX station, enter any unique made-up MAC (for
+example `02:00:00:00:00:01`) and see the user guide's
+[Connecting a station](docs/guide/connecting.md#weewx).
 
 ### 2. Point the console at WS4Free
 
@@ -300,6 +315,17 @@ set aside, not deleted, so charts, records, frost dates, reports and the
 dashboard ignore them. Removing the exclusion restores them exactly. Almanac
 records have an "Exclude these readings…" shortcut for when a record looks
 wrong.
+
+## Temperature calibration
+
+A sensor that reads wrong in a consistent way (typically warm in sunshine and
+cold on clear nights, from a poor radiation shield) can be corrected on the
+**Data quality** page. The correction depends on the time of day and solar
+radiation, month by month, and can be fitted automatically against a nearby
+airport station using hourly data from the
+[Iowa Environmental Mesonet](https://mesonet.agron.iastate.edu/) (the server
+needs outbound HTTPS to fetch it), or entered by hand. Original readings are
+kept, so it is fully reversible. See the user guide for details.
 
 ## Summaries and storage
 

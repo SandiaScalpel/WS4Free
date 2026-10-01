@@ -178,7 +178,10 @@
           { key: 'rain', title: `Rain (${u.rain})`, note: `Bars: total ${per} · line: accumulated since the start of the range` },
           { key: 'pressure', title: `Pressure (${u.pressure})`, note: res === 'raw' ? '' : 'Mean' },
           { key: 'solar', title: 'Solar radiation (W/m²)', note: res === 'daily' ? 'Daily peak' : (res === 'hourly' ? 'Mean' : '') },
-        ];
+        ].concat((this.history.sensor_charts || []).map((sc) => ({
+          key: sc.key, title: sc.title, sensor: sc,
+          note: sc.bars ? `Strikes ${per}` : (res === 'raw' ? '' : 'Mean'),
+        })));
       },
 
       renderHistory() {
@@ -300,6 +303,21 @@
           pressure: () => base('pressure', [line('Pressure', 'pressure', pal[0], false)], null, d.pressure),
           solar: () => base('solar', [line('Solar radiation', 'solar', pal[0], true)], null, 0),
         };
+
+        // Extra sensors: one line per channel (fixed palette slots, legend when ≥ 2), or
+        // strike-count bars for lightning.
+        this.historyCharts.filter((x) => x.sensor).forEach((x) => {
+          const sc = x.sensor;
+          defs[x.key] = () => {
+            const series = sc.lines.map((ln, i) => (sc.bars
+              ? { name: ln.name, type: 'bar', data: pts(ln.col), barMaxWidth: 24, itemStyle: { color: pal[i], borderRadius: [4, 4, 0, 0] }, emphasis: { disabled: true } }
+              : line(ln.name, ln.col, pal[i], sc.lines.length === 1)));
+            const legend = sc.lines.length > 1 ? sc.lines.map((ln) => ({ name: ln.name, icon: 'rect' })) : null;
+            const opt = base(x.key, series, legend, sc.digits);
+            if (sc.bars) opt.yAxis.min = 0;
+            return opt;
+          };
+        });
 
         const charts = [];
         this.$root.querySelectorAll('[data-history]').forEach((el) => {

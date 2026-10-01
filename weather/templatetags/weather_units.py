@@ -176,3 +176,12 @@ def get_item(mapping, key):
 def noon_offset(coef):
     """Total correction at a sunny noon (~900 W/m²), °C."""
     return coef.get('night', 0) + coef.get('day', 0) + coef.get('solar', 0) * 0.9
+
+
+@register.simple_tag
+def help_url(tab):
+    """Guide page that explains a station tab (weather.help.TAB_PAGES)."""
+    from django.urls import reverse
+
+    from ..help import TAB_PAGES
+    return reverse('weather:help-page', args=[TAB_PAGES.get(tab, 'dashboard')])

@@ -1,0 +1,42 @@
+{% extends "weather/base_generic.html" %}
+{% block title %}{{ title }} · Help · {{ site.site_title }}{% endblock %}
+{% block content %}
+<div class="grid gap-8 lg:grid-cols-[14rem_minmax(0,1fr)] xl:grid-cols-[14rem_minmax(0,1fr)_12rem]">
+  {# Guide navigation: a list on wide screens, a menu on phones. #}
+  <nav aria-label="User guide" class="lg:sticky lg:top-24 lg:self-start">
+    <p class="eyebrow">User guide</p>
+    <ul class="mt-3 hidden space-y-0.5 text-sm lg:block">
+      {% for page_slug, page_title in pages %}
+      <li><a href="{% if page_slug == 'index' %}{% url 'weather:help' %}{% else %}{% url 'weather:help-page' page_slug %}{% endif %}"
+             class="nav-link block {% if page_slug == slug %}bg-accent-soft font-semibold text-accent{% endif %}"
+             {% if page_slug == slug %}aria-current="page"{% endif %}>{{ page_title }}</a></li>
+      {% endfor %}
+    </ul>
+    <div class="mt-2 lg:hidden">
+      <label for="guide-page" class="sr-only">Guide page</label>
+      <select id="guide-page" onchange="location.href = this.value">
+        {% for page_slug, page_title in pages %}
+        <option value="{% if page_slug == 'index' %}{% url 'weather:help' %}{% else %}{% url 'weather:help-page' page_slug %}{% endif %}" {% if page_slug == slug %}selected{% endif %}>{{ page_title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </nav>
+
+  <article class="guide min-w-0">
+    {{ body|safe }}
+    <nav class="mt-12 flex flex-wrap justify-between gap-4 border-t border-line pt-6 text-sm" aria-label="Previous and next">
+      {% if previous %}<a href="{% if previous.0 == 'index' %}{% url 'weather:help' %}{% else %}{% url 'weather:help-page' previous.0 %}{% endif %}" class="no-underline">← {{ previous.1 }}</a>{% else %}<span></span>{% endif %}
+      {% if next %}<a href="{% url 'weather:help-page' next.0 %}" class="no-underline">{{ next.1 }} →</a>{% endif %}
+    </nav>
+  </article>
+
+  {% if sections|length > 2 %}
+  <aside class="hidden xl:block xl:sticky xl:top-24 xl:self-start" aria-label="On this page">
+    <p class="eyebrow">On this page</p>
+    <ul class="mt-3 space-y-1.5 text-sm">
+      {% for s in sections %}<li><a href="#{{ s.id }}" class="text-muted no-underline hover:text-ink">{{ s.name }}</a></li>{% endfor %}
+    </ul>
+  </aside>
+  {% endif %}
+</div>
+{% endblock %}

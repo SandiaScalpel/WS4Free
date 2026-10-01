@@ -10,6 +10,15 @@ upload protocol) but differ in the details that matter:
     MAC rather than the MAC itself.
   * Wunderground-protocol pushes: ``baromin``/``absbaromin``, ``dewptf``,
     ``indoortempf``, ``UV``; ``rainin`` is last-hour rain, with no rate at all.
+    WeeWX's Wunderground uploader sends this format too.
+
+Ecowitt gateways can also upload in metric (``tempc``, ``baromrelhpa``,
+``windspeedkmh``, ``dailyrainmm``…), and stations with a piezo ("haptic") rain
+sensor such as the WS90 report it under separate names (``drain_piezo``,
+``erain_piezo``, ``rrain_piezo``…). A console with both a piezo sensor and a
+tipping-bucket gauge sends both; the station's ``rain_gauge`` setting picks one
+(automatic: the tipping bucket when present). Only that gauge's counters are
+stored, so rain is never counted twice.
 
 Everything not mapped to an Observation column is kept, unconverted, in
 ``extra`` (extra temperature probes, soil moisture, leaf wetness, batteries…),
@@ -29,7 +38,13 @@ _DROP_KEYS = {
     'softwaretype', 'stationtype', 'model', 'freq', 'interval', 'runtime', 'heap',
     'feelsLike', 'feelsLikein', 'dewPointin', 'windchillf', 'heatindexf',
     'weeklyrainin', 'monthlyrainin', 'yearlyrainin', 'hourlyrainin', 'rainin', 'rainratein',
+    'tempfeelsf', 'tempfeelsc', 'windchillc', 'maxdailygustkmh', 'last24hrainin', '24hourrainin',
 }
+# Every rain field of either gauge, in either unit. None of these is ever kept in
+# `extra`: the chosen gauge's are mapped, the other gauge's are dropped.
+_RAIN_KEYS = {f'{p}rain{u}' for p in ('event', 'hourly', 'daily', 'weekly', 'monthly', 'yearly', 'total', 'last24h')
+              for u in ('in', 'mm')} | {'rainratein', 'rainratemm', 'rainin'} | {
+    f'{p}rain_piezo{u}' for p in ('r', 'e', 'h', 'd', 'w', 'm', 'y', 'last24h') for u in ('', 'mm')} | {'srain_piezo'}
 
 # (upload key, Observation column, converter) — first key present wins per column.
 _COMMON = [
@@ -44,9 +59,6 @@ _COMMON = [
     ('windspeedmph', 'wind_speed_ms', units.mph_to_ms),
     ('windgustmph', 'wind_gust_ms', units.mph_to_ms),
     ('winddir', 'wind_dir_deg', float),
-    ('eventrainin', 'rain_event_mm', units.in_to_mm),
-    ('dailyrainin', 'rain_daily_mm', units.in_to_mm),
-    ('totalrainin', 'rain_counter_mm', units.in_to_mm),
     ('solarradiation', 'solar_wm2', float),
     ('uv', 'uv_index', float),
     ('UV', 'uv_index', float),
@@ -54,9 +66,43 @@ _COMMON = [
     ('indoortempf', 'temp_in_c', units.f_to_c),
     ('humidityin', 'humidity_in', float),
     ('indoorhumidity', 'humidity_in', float),
+    # Ecowitt metric uploads and Ecowitt's own dew point names.
+    ('tempc', 'temp_c', float),
+    ('dewpointf', 'dewpoint_c', units.f_to_c),
+    ('dewpointc', 'dewpoint_c', float),
+    ('baromrelhpa', 'pressure_rel_hpa', float),
+    ('baromabshpa', 'pressure_abs_hpa', float),
+    ('windspeedkmh', 'wind_speed_ms', lambda v: v / 3.6),
+    ('windgustkmh', 'wind_gust_ms', lambda v: v / 3.6),
+    ('tempinc', 'temp_in_c', float),
+]
+_ident = float
+# Rain counters, per gauge. `totalrain` is the lifetime counter; consoles without
+# one (WS90 piezo, some gateways) fall back to the yearly counter, which resets on
+# 1 January — the rain logic treats a counter going backwards as a reset.
+_TIPPING = [
+    ('eventrainin', 'rain_event_mm', units.in_to_mm), ('eventrainmm', 'rain_event_mm', _ident),
+    ('dailyrainin', 'rain_daily_mm', units.in_to_mm), ('dailyrainmm', 'rain_daily_mm', _ident),
+    ('totalrainin', 'rain_counter_mm', units.in_to_mm), ('totalrainmm', 'rain_counter_mm', _ident),
+    ('yearlyrainin', 'rain_counter_mm', units.in_to_mm), ('yearlyrainmm', 'rain_counter_mm', _ident),
+]
+_PIEZO = [
+    ('erain_piezo', 'rain_event_mm', units.in_to_mm), ('erain_piezomm', 'rain_event_mm', _ident),
+    ('drain_piezo', 'rain_daily_mm', units.in_to_mm), ('drain_piezomm', 'rain_daily_mm', _ident),
+    ('yrain_piezo', 'rain_counter_mm', units.in_to_mm), ('yrain_piezomm', 'rain_counter_mm', _ident),
+    ('rrain_piezo', 'rain_rate_mmh', units.in_to_mm), ('rrain_piezomm', 'rain_rate_mmh', _ident),
 ]
 _AMBIENT_RATE = [('hourlyrainin', 'rain_rate_mmh', units.in_to_mm)]
-_ECOWITT_RATE = [('rainratein', 'rain_rate_mmh', units.in_to_mm)]
+_ECOWITT_RATE = [('rainratein', 'rain_rate_mmh', units.in_to_mm), ('rainratemm', 'rain_rate_mmh', _ident)]
+
+
+def _rain_table(params, tipping_rate, gauge):
+    """The rain fields to read: the tipping-bucket gauge's or the piezo sensor's."""
+    has_tipping = any(params.get(k) not in (None, '') for k, _, _ in _TIPPING)
+    has_piezo = any(params.get(k) not in (None, '') for k, _, _ in _PIEZO)
+    if has_piezo and (gauge == 'piezo' or not has_tipping):
+        return _PIEZO
+    return _TIPPING + tipping_rate
 
 # Physically plausible SI ranges; anything outside is a sensor glitch or a
 # "no sensor" sentinel (e.g. -9999) and is stored as NULL.
@@ -154,26 +200,27 @@ def parse_dateutc(raw, now, max_skew_s):
     return parsed, False
 
 
-def _parse_push(params, rate_table, now, max_skew_s, passkey_keys):
+def _parse_push(params, rate_table, now, max_skew_s, passkey_keys, rain_gauge):
     params = {k: v for k, v in params.items() if v is not None}
     timestamp, adjusted = parse_dateutc(params.get('dateutc'), now, max_skew_s)
+    table = _COMMON + _rain_table(params, rate_table, rain_gauge)
     values = {}
-    _map(params, _COMMON + rate_table, values)
+    _map(params, table, values)
     if not values:
         raise ParseError('no recognised weather fields')
-    mapped = {key for key, _, _ in _COMMON + rate_table}
+    mapped = {key for key, _, _ in table} | _RAIN_KEYS
     passkey = next((str(params[k]).strip() for k in passkey_keys if params.get(k)), '')
     return Reading(timestamp, _finish(values), _extras(params, mapped), passkey, adjusted)
 
 
-def parse_ambient_push(params, now, max_skew_s=900):
+def parse_ambient_push(params, now, max_skew_s=900, rain_gauge='auto'):
     """Ambient-protocol or Wunderground-protocol custom-server upload (GET params)."""
-    return _parse_push(params, _AMBIENT_RATE, now, max_skew_s, ('PASSKEY', 'MAC', 'ID'))
+    return _parse_push(params, _AMBIENT_RATE, now, max_skew_s, ('PASSKEY', 'MAC', 'ID'), rain_gauge)
 
 
-def parse_ecowitt_push(params, now, max_skew_s=900):
+def parse_ecowitt_push(params, now, max_skew_s=900, rain_gauge='auto'):
     """Ecowitt-protocol custom-server upload (form POST)."""
-    return _parse_push(params, _ECOWITT_RATE, now, max_skew_s, ('PASSKEY',))
+    return _parse_push(params, _ECOWITT_RATE, now, max_skew_s, ('PASSKEY',), rain_gauge)
 
 
 def parse_api_record(record):
@@ -184,7 +231,8 @@ def parse_api_record(record):
         timestamp = dt.datetime.fromtimestamp(int(record['dateutc']) / 1000, dt.UTC)
     except (KeyError, TypeError, ValueError) as exc:
         raise ParseError(f'record has no usable dateutc: {exc}') from exc
+    table = _COMMON + _TIPPING + _AMBIENT_RATE
     values = {}
-    _map(record, _COMMON + _AMBIENT_RATE, values)
-    mapped = {key for key, _, _ in _COMMON + _AMBIENT_RATE}
+    _map(record, table, values)
+    mapped = {key for key, _, _ in table} | _RAIN_KEYS
     return Reading(timestamp, _finish(values), _extras(record, mapped))
