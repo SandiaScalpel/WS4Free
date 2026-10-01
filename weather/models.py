@@ -381,3 +381,57 @@ class ExcludedValue(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['observation', 'field'], name='uniq_excluded_observation_field')]
+
+
+class TempCalibration(models.Model):
+    """A correction for a temperature sensor that reads wrong in a known way (a
+    poorly shielded sensor runs warm in sunshine and cold on clear nights).
+
+        corrected = raw − Δ,   Δ = night + day·[sun up] + solar · S/1000
+
+    with coefficients in °C (solar in °C per 1000 W/m²) for each calendar month.
+    Reference mode fits them against a nearby reference station; manual mode
+    uses one set for every month. Like exclusions, applying keeps the original
+    values (CalibratedValue) and is fully reversible. See weather.calibration.
+    """
+    MODE_CHOICES = [('reference', 'Fitted to a reference station'), ('manual', 'Manual')]
+    STATUS_CHOICES = [
+        ('fitting', 'Fitting'), ('fitted', 'Ready to review'), ('pending', 'Applying'),
+        ('applied', 'Applied'), ('removing', 'Removing'), ('failed', 'Failed'),
+    ]
+
+    station = models.ForeignKey(Station, on_delete=models.CASCADE, related_name='calibrations')
+    mode = models.CharField(max_length=10, choices=MODE_CHOICES)
+    start = models.DateTimeField()
+    end = models.DateTimeField(null=True, blank=True, help_text='Blank = still ongoing; new readings are corrected too.')
+    coefficients = models.JSONField(default=dict, blank=True,
+                                    help_text='{"1": {"night": °C, "day": °C, "solar": °C per 1000 W/m²}, … "12": …}')
+    # Reference mode
+    reference_station = models.CharField(max_length=10, blank=True, help_text='Airport/ASOS identifier, e.g. DEN.')
+    baseline_start = models.DateField(null=True, blank=True)
+    baseline_end = models.DateField(null=True, blank=True)
+    validation = models.JSONField(default=dict, blank=True)
+    message = models.TextField(blank=True, help_text='Progress or the reason a fit failed.')
+
+    reason = models.CharField(max_length=200, blank=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
+    readings = models.PositiveIntegerField(default=0)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-start']
+
+    def __str__(self):
+        return f'{self.station}: {self.get_mode_display()} temperature calibration from {self.start:%Y-%m-%d}'
+
+
+class CalibratedValue(models.Model):
+    """The original value of a temperature column while a calibration corrects it."""
+    observation = models.ForeignKey(Observation, on_delete=models.CASCADE, related_name='calibrated_values')
+    calibration = models.ForeignKey(TempCalibration, on_delete=models.CASCADE, related_name='originals')
+    field = models.CharField(max_length=32)
+    value = models.FloatField()
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['observation', 'field'], name='uniq_calibrated_observation_field')]

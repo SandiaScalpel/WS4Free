@@ -14,6 +14,7 @@ from django.utils import timezone
 
 from . import units as u
 from .models import DailyRollup, LatestReading, Observation
+from .calibration import correct_live
 from .quality import excluded_fields_at
 
 STALE_AFTER = dt.timedelta(minutes=10)
@@ -67,10 +68,14 @@ def build(station, prefs, viewer=None, now=None):
     today = now.astimezone(tz).date()
     latest = LatestReading.objects.filter(station=station).first()
     data = dict(latest.data) if latest else {}
+    calibrated = False
     if latest:
         # An ongoing data-quality exclusion (a failing sensor) hides that live value too.
         for field in excluded_fields_at(station, latest.timestamp):
             data.pop(field, None)
+        corrected = correct_live(station, data, latest.timestamp)
+        calibrated = corrected is not data
+        data = corrected
     rollup = DailyRollup.objects.filter(station=station, date=today).first()
 
     month_start = today.replace(day=1)
@@ -94,6 +99,7 @@ def build(station, prefs, viewer=None, now=None):
         'station': station,
         'latest': latest,
         'now': data,
+        'calibrated': calibrated,
         'age_s': int(age.total_seconds()) if age is not None else None,
         'stale': age is None or age > STALE_AFTER,
         'feels_like_c': u.feels_like_c(temp, data.get('humidity'), data.get('wind_speed_ms')),

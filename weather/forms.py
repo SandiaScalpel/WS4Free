@@ -6,7 +6,9 @@ import datetime as dt
 
 from django.utils import timezone
 
-from .models import EXCLUSION_GROUPS, DataExclusion, SiteSettings, Station
+from django.db.models import Q
+
+from .models import EXCLUSION_GROUPS, DataExclusion, SiteSettings, Station, TempCalibration
 from .units import FEET_PER_METER, default_prefs
 
 
@@ -140,3 +142,97 @@ class ExclusionForm(forms.Form):
         return DataExclusion.objects.create(
             station=self.station, start=self.cleaned_data['start'], end=self.cleaned_data['end'],
             groups=self.cleaned_data['groups'], reason=self.cleaned_data['reason'], created_by=user)
+
+
+class CalibrationForm(forms.Form):
+    """Temperature calibration. Times in the station's time zone; manual offsets in
+    the viewer's temperature unit (stored in °C)."""
+    mode = forms.ChoiceField(choices=TempCalibration.MODE_CHOICES, widget=forms.RadioSelect, initial='reference')
+    start = forms.DateTimeField(label='Affected from', widget=forms.DateTimeInput(attrs={'type': 'datetime-local'}, format='%Y-%m-%dT%H:%M'),
+                                input_formats=['%Y-%m-%dT%H:%M', '%Y-%m-%d'],
+                                help_text='When the sensor started reading wrong (e.g. when it was installed).')
+    end = forms.DateTimeField(label='Affected until', required=False,
+                              widget=forms.DateTimeInput(attrs={'type': 'datetime-local'}, format='%Y-%m-%dT%H:%M'),
+                              input_formats=['%Y-%m-%dT%H:%M', '%Y-%m-%d'],
+                              help_text='Blank if it still reads wrong: new readings are corrected too.')
+    reason = forms.CharField(max_length=200, required=False,
+                             widget=forms.TextInput(attrs={'placeholder': 'e.g. replacement sensor reads warm in sun'}))
+    reference_station = forms.CharField(max_length=10, required=False, label='Reference station',
+                                        help_text='Nearby airport weather station identifier, e.g. DEN (or KDEN).')
+    baseline_start = forms.DateField(required=False, label='Trusted from', widget=forms.DateInput(attrs={'type': 'date'}))
+    baseline_end = forms.DateField(required=False, label='Trusted until', widget=forms.DateInput(attrs={'type': 'date'}),
+                                   help_text='A period when this sensor read correctly, ideally a full year.')
+    night = forms.FloatField(required=False, label='Night offset')
+    day = forms.FloatField(required=False, label='Extra daytime offset')
+    solar = forms.FloatField(required=False, label='Solar slope', help_text='Additional error per 1000 W/m² of sunshine.')
+
+    def __init__(self, *args, station, prefs, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.station, self.prefs = station, prefs
+        unit = prefs.label('temp')
+        self.fields['night'].help_text = f'How much too warm ({unit}) the sensor reads at night; negative if too cold.'
+        self.fields['day'].help_text = f'Extra error ({unit}) whenever the sun is up.'
+        self.fields['solar'].label = f'Solar slope ({unit} per 1000 W/m²)'
+
+    def full_clean(self):
+        with timezone.override(self.station.tzinfo):
+            super().full_clean()
+
+    def _aware(self, value):
+        if value is None:
+            return None
+        if timezone.is_naive(value):
+            value = value.replace(tzinfo=self.station.tzinfo)
+        return value.astimezone(dt.UTC)
+
+    def clean_reference_station(self):
+        code = self.cleaned_data.get('reference_station', '').strip().upper()
+        # The archive uses three-letter identifiers for US stations (DEN, not KDEN).
+        if len(code) == 4 and code.startswith('K'):
+            code = code[1:]
+        return code
+
+    def clean(self):
+        data = super().clean()
+        start, end = self._aware(data.get('start')), self._aware(data.get('end'))
+        data['start'], data['end'] = start, end
+        if start and end and end <= start:
+            self.add_error('end', 'The end must be after the start.')
+        if start and start > timezone.now():
+            self.add_error('start', 'The start can\'t be in the future.')
+        if start:
+            clash = TempCalibration.objects.filter(station=self.station).exclude(status='failed').filter(
+                Q(end__isnull=True) | Q(end__gt=start))
+            if end:
+                clash = clash.filter(start__lt=end)
+            if clash.exists():
+                self.add_error('start', 'This period overlaps an existing calibration; remove that one first.')
+        if data.get('mode') == 'reference':
+            if not data.get('reference_station'):
+                self.add_error('reference_station', 'Enter a reference station.')
+            bs, be = data.get('baseline_start'), data.get('baseline_end')
+            if not bs or not be:
+                self.add_error('baseline_end', 'Enter the period when the sensor was trusted.')
+            elif be <= bs:
+                self.add_error('baseline_end', 'The end must be after the start.')
+            elif (be - bs).days < 30:
+                self.add_error('baseline_end', 'Use at least a month; a full year captures every season.')
+            elif start and dt.datetime.combine(be, dt.time(), tzinfo=self.station.tzinfo) > start:
+                self.add_error('baseline_end', 'The trusted period must end before the affected period starts.')
+        else:
+            if all(data.get(f) in (None, 0) for f in ('night', 'day', 'solar')):
+                self.add_error('night', 'Enter at least one non-zero offset.')
+        return data
+
+    def save(self, user):
+        d = self.cleaned_data
+        common = dict(station=self.station, mode=d['mode'], start=d['start'], end=d['end'], reason=d['reason'],
+                      created_by=user)
+        if d['mode'] == 'reference':
+            return TempCalibration.objects.create(**common, reference_station=d['reference_station'],
+                                                  baseline_start=d['baseline_start'], baseline_end=d['baseline_end'],
+                                                  status='fitting', message='Fetching reference data…')
+        to_c = (lambda v: v * 5 / 9) if self.prefs.temp == 'F' else (lambda v: v)
+        coef = {'night': to_c(d['night'] or 0.0), 'day': to_c(d['day'] or 0.0), 'solar': to_c(d['solar'] or 0.0)}
+        return TempCalibration.objects.create(**common, status='pending',
+                                              coefficients={str(m): dict(coef) for m in range(1, 13)})

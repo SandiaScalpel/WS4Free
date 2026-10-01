@@ -37,6 +37,8 @@
   </div>
 
   <p class="mt-3 text-xs text-faint">Scroll or pinch on a chart to zoom, drag to pan. All charts move together.</p>
+{% include "weather/partials/calibration_note.html" %}
+
 
   {# ── History ─────────────────────────────────────────────────────────────── #}
   <div class="mt-4 grid gap-4 transition-opacity" :class="loading.history ? 'opacity-60' : ''" aria-live="polite">

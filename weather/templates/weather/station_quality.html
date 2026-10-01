@@ -1,5 +1,5 @@
 {% extends "weather/base_generic.html" %}
-{% load tz humanize %}
+{% load tz humanize weather_units %}
 {% block title %}Data quality · {{ station.name }} · {{ site.site_title }}{% endblock %}
 {% block content %}
 <div class="mx-auto max-w-4xl">
@@ -66,6 +66,125 @@
       {% include "weather/partials/field.html" with field=form.reason %}
       <div class="flex justify-end"><button type="submit" class="btn btn-primary">Exclude readings</button></div>
     </form>
+  </section>
+
+  {# ── Temperature calibration ───────────────────────────────────────────── #}
+  <section id="calibration" class="mt-12" {% if busy %}hx-get="{{ request.path }}" hx-trigger="every 4s" hx-select="#calibration" hx-swap="outerHTML" hx-headers='{"X-Poll": "1"}'{% endif %}>
+    <h2 class="text-base font-semibold">Temperature calibration</h2>
+    <p class="mt-1 max-w-prose text-sm text-muted">
+      Correct a temperature sensor that reads wrong in a consistent way, such as a poorly shielded sensor that runs warm in
+      sunshine and cold on clear nights. The correction uses the time of day and the solar radiation, month by month.
+      Original readings are kept; removing a calibration restores them.
+    </p>
+
+    {% for c in calibrations %}
+    <article class="card mt-4 p-5">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div class="min-w-0">
+          <p class="font-medium">{{ c.start|date:"M j, Y" }} – {% if c.end %}{{ c.end|date:"M j, Y" }}{% else %}<span class="text-warn">ongoing</span>{% endif %}
+            <span class="badge ml-1 bg-surface-2 text-muted">{% if c.mode == 'reference' %}Fitted to {{ c.reference_station }}{% else %}Manual{% endif %}</span></p>
+          {% if c.reason %}<p class="mt-1 text-sm text-muted">{{ c.reason }}</p>{% endif %}
+          <p class="mt-1 text-xs text-faint">
+            {% if c.status == 'fitting' %}<span class="text-accent">{{ c.message|default:"Fitting…" }}</span>
+            {% elif c.status == 'fitted' %}<span class="text-accent">Ready to review — not applied yet</span>
+            {% elif c.status == 'pending' %}<span class="text-accent">Correcting readings…</span>
+            {% elif c.status == 'removing' %}<span class="text-accent">Restoring original readings…</span>
+            {% elif c.status == 'applied' %}{{ c.readings|intcomma }} reading{{ c.readings|pluralize }} corrected
+            {% else %}<span class="text-bad">Failed: {{ c.message }}</span>{% endif %}
+            · added {{ c.created_at|date:"M j, Y" }}{% if c.mode == 'reference' and c.baseline_start %} · trusted period {{ c.baseline_start|date:"M j, Y" }} – {{ c.baseline_end|date:"M j, Y" }}{% endif %}
+          </p>
+        </div>
+        <div class="flex gap-2">
+          {% if c.status == 'fitted' %}
+          <form method="post" action="{% url 'weather:station-calibration-apply' station.slug c.pk %}">{% csrf_token %}<button class="btn btn-primary btn-sm">Apply</button></form>
+          {% endif %}
+          {% if c.status == 'fitted' or c.status == 'failed' or c.status == 'applied' %}
+          <form method="post" action="{% url 'weather:station-calibration-remove' station.slug c.pk %}"
+                onsubmit="return confirm('{% if c.status == 'applied' %}Restore the original readings for this period?{% else %}Discard this calibration?{% endif %}')">
+            {% csrf_token %}<button class="btn btn-secondary btn-sm">{% if c.status == 'applied' %}Remove{% else %}Discard{% endif %}</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if c.validation.before %}
+      {% with v=c.validation %}
+      <div class="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+        <div class="rounded-lg bg-surface-2 p-3"><p class="text-xs text-muted">Typical error before</p><p class="text-lg font-semibold">±{{ v.before|temp_delta:units|slice:"1:" }}</p><p class="text-xs text-faint">average bias {{ v.bias_before|temp_delta:units }}</p></div>
+        <div class="rounded-lg bg-surface-2 p-3"><p class="text-xs text-muted">Typical error after</p><p class="text-lg font-semibold">±{{ v.after|temp_delta:units|slice:"1:" }}</p><p class="text-xs text-faint">average bias {{ v.bias_after|temp_delta:units }}</p></div>
+        <div class="rounded-lg bg-surface-2 p-3"><p class="text-xs text-muted">Best achievable</p><p class="text-lg font-semibold">±{{ v.floor|temp_delta:units|slice:"1:" }}</p><p class="text-xs text-faint">your site vs {{ c.reference_station }} with the trusted sensor</p></div>
+      </div>
+      <p class="mt-2 text-xs text-muted">Hourly comparison with {{ c.reference_station }}, tested on weeks the fit didn't see ({{ v.hours|intcomma }} hours).
+        {% for name, sv in v.seasons.items %}{{ name|capfirst }}: ±{{ sv.before|temp_delta:units|slice:"1:" }} → ±{{ sv.after|temp_delta:units|slice:"1:" }}{% if not forloop.last %} · {% endif %}{% endfor %}</p>
+      {% if v.improvement < 0.1 %}<p class="alert alert-warning mt-3">The correction barely improves on the raw readings. Check the trusted period and reference station before applying.</p>{% endif %}
+      {% endwith %}
+      {% endif %}
+
+      {% if c.coefficients %}
+      <details class="mt-4" {% if c.status == 'fitted' %}open{% endif %}>
+        <summary class="cursor-pointer text-sm font-medium">Correction by month</summary>
+        <div class="relative mt-2 overflow-x-auto">
+          <table class="w-full text-sm tabular-nums [&_td]:whitespace-nowrap">
+            <thead class="text-left text-xs text-faint"><tr class="border-b border-line">
+              <th class="px-3 py-2 font-medium">Month</th><th class="px-3 py-2 text-right font-medium">Night</th>
+              <th class="px-3 py-2 text-right font-medium">Extra by day</th><th class="px-3 py-2 text-right font-medium">Per 1000 W/m²</th>
+              <th class="px-3 py-2 text-right font-medium">Sunny noon (~900 W/m²)</th></tr></thead>
+            <tbody class="divide-y divide-line">
+              {% for key, coef in c.coefficients.items %}
+              <tr><td class="px-3 py-1.5">{{ key|month_name }}{% if coef.pooled %} <span class="text-xs text-faint" title="Too few hours this month; uses the all-months fit">pooled</span>{% endif %}</td>
+                  <td class="px-3 py-1.5 text-right">{{ coef.night|temp_delta:units }}</td>
+                  <td class="px-3 py-1.5 text-right">{{ coef.day|temp_delta:units }}</td>
+                  <td class="px-3 py-1.5 text-right">{{ coef.solar|temp_delta:units }}</td>
+                  <td class="px-3 py-1.5 text-right font-medium">{{ coef|noon_offset|temp_delta:units }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <p class="mt-2 text-xs text-faint">How much too warm the sensor reads; the correction subtracts it.</p>
+        </div>
+      </details>
+      {% endif %}
+    </article>
+    {% endfor %}
+
+    <div class="card mt-4 p-6" x-data="{ mode: '{{ cal_form.mode.value|default:'reference' }}' }">
+      <h3 class="text-base font-semibold">Add a calibration</h3>
+      <form method="post" class="mt-4 space-y-4" novalidate>
+        {% csrf_token %}<input type="hidden" name="form" value="calibration">
+        {% if cal_form.errors %}<div class="alert alert-error" role="alert">Nothing was saved. Please fix the highlighted fields below.</div>{% endif %}
+        <fieldset>
+          <legend class="mb-2 text-sm font-medium">Method</legend>
+          <div class="grid gap-2 sm:grid-cols-2">
+            {% for choice in cal_form.mode %}
+            <label class="m-0 flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm font-normal"
+                   :class="mode === '{{ choice.data.value }}' ? 'border-accent bg-accent-soft' : 'border-line hover:bg-surface-2'">
+              <input type="radio" name="{{ choice.data.name }}" value="{{ choice.data.value }}" x-model="mode" class="mt-0.5" {% if choice.data.selected %}checked{% endif %}>
+              <span><span class="font-medium">{{ choice.choice_label }}</span>
+                <span class="block text-xs text-muted">{% if choice.data.value == 'reference' %}Compare with a nearby airport station hour by hour and fit the correction for you.{% else %}Enter the offsets yourself; used for every month.{% endif %}</span></span>
+            </label>
+            {% endfor %}
+          </div>
+        </fieldset>
+        <div class="grid gap-4 sm:grid-cols-2 [&_.field+.field]:mt-0">
+          {% include "weather/partials/field.html" with field=cal_form.start %}
+          {% include "weather/partials/field.html" with field=cal_form.end %}
+        </div>
+        <div x-show="mode === 'reference'" class="space-y-4">
+          {% include "weather/partials/field.html" with field=cal_form.reference_station %}
+          <div class="grid gap-4 sm:grid-cols-2 [&_.field+.field]:mt-0">
+            {% include "weather/partials/field.html" with field=cal_form.baseline_start %}
+            {% include "weather/partials/field.html" with field=cal_form.baseline_end %}
+          </div>
+          <p class="text-xs text-muted">Reference data comes from the Iowa Environmental Mesonet's public archive; only the station identifier and dates are sent.</p>
+        </div>
+        <div x-show="mode === 'manual'" x-cloak class="grid gap-4 sm:grid-cols-3 [&_.field+.field]:mt-0">
+          {% include "weather/partials/field.html" with field=cal_form.night %}
+          {% include "weather/partials/field.html" with field=cal_form.day %}
+          {% include "weather/partials/field.html" with field=cal_form.solar %}
+        </div>
+        {% include "weather/partials/field.html" with field=cal_form.reason %}
+        <div class="flex justify-end"><button type="submit" class="btn btn-primary" x-text="mode === 'reference' ? 'Fit correction' : 'Apply correction'">Fit correction</button></div>
+      </form>
+    </div>
   </section>
   {% endtimezone %}
 </div>

@@ -380,10 +380,15 @@ too ("Always use HTTPS" style rules must skip `/ingest/`).
 
 ## License
 
-WS4Free is free software, released under the
-[GNU General Public License v3.0](LICENSE). You may use, study, share and modify
-it; if you distribute a modified version, you must share its source under the
-same license.
+WS4Free is free software: you can redistribute it and/or modify it under the
+terms of the [GNU General Public License](LICENSE) as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version (SPDX: `GPL-3.0-or-later`). If you distribute a modified version,
+you must share its source under the same terms.
+
+WS4Free is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
 Bundled third-party assets keep their own licenses: htmx (0BSD), Alpine.js
 (MIT), Apache ECharts (Apache-2.0) and the Inter font (SIL OFL 1.1). See

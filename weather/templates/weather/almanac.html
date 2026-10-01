@@ -5,6 +5,7 @@
 {% include "weather/partials/station_title.html" with tab="almanac" %}
 {% timezone station.timezone %}
 
+{% include "weather/partials/calibration_note.html" %}
 {# ── On this day ─────────────────────────────────────────────────────────── #}
 <section class="mt-6" aria-labelledby="otd-title" id="on-this-day">
   <div class="flex flex-wrap items-end justify-between gap-3">

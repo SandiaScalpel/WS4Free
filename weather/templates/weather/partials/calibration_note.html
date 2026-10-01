@@ -1,0 +1,8 @@
+{# Shown wherever temperatures may include corrected values. Needs `calibration_notes`. #}
+{% if calibration_notes %}
+<p class="mt-3 flex items-start gap-2 text-xs text-muted">
+  <span class="badge shrink-0 bg-warn/15 text-warn">Corrected</span>
+  <span>Temperatures {% for c in calibration_notes %}from {{ c.start|date:"M j, Y" }}{% if c.end %} to {{ c.end|date:"M j, Y" }}{% else %} onward{% endif %}{% if not forloop.last %}, and {% endif %}{% endfor %}
+  are corrected for a sensor that read wrong{% if calibration_notes.0.reason %} ({{ calibration_notes.0.reason }}){% endif %}: they are estimates, not direct measurements.</span>
+</p>
+{% endif %}

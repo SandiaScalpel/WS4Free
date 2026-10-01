@@ -96,8 +96,11 @@ def remove_exclusion(exclusion):
                 ExcludedValue.objects.filter(pk__in=[pk for pk, _, _ in chunk]).delete()
                 restored += len(chunk)
                 last_pk = chunk[-1][0]
-        start = exclusion.start
+        start, end = exclusion.start, exclusion.end
         exclusion.delete()
+        # Restored readings are raw: correct them again if a calibration covers them.
+        from .calibration import reapply_window
+        reapply_window(station, start, end)
     mark_dirty(station.pk, start)
     return restored
 

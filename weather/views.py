@@ -7,15 +7,16 @@ from django.contrib.auth.views import redirect_to_login
 from django.db.models import Max, Min, Q
 from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from . import agro, almanac, charts, dashboard, reports
-from . import quality
-from .forms import ExclusionForm, SiteSettingsForm, StationSettingsForm
+from . import calibration, quality
+from .forms import CalibrationForm, ExclusionForm, SiteSettingsForm, StationSettingsForm
 from .ingest.store import mark_dirty
-from .models import DailyRollup, DataExclusion, Observation, SiteSettings, Station
+from .models import DailyRollup, DataExclusion, Observation, SiteSettings, Station, TempCalibration
 from .units import SYSTEMS, UNITS_COOKIE, prefs_for_request
 
 
@@ -200,6 +201,8 @@ def station_rotate_token(request, slug):
 
 # ── Charts ────────────────────────────────────────────────────────────────────
 
+ALL_TIME_START = dt.datetime(1900, 1, 1, tzinfo=dt.UTC)
+
 RANGE_PRESETS = {'24h': dt.timedelta(hours=24), '7d': dt.timedelta(days=7), '30d': dt.timedelta(days=30),
                  '1y': dt.timedelta(days=365)}
 
@@ -237,6 +240,7 @@ def station_charts(request, slug):
         return redirect_to_login(request.get_full_path())
     stations = list(visible_stations(request.user))
     return render(request, 'weather/charts.html', {
+        'calibration_notes': calibration.overlapping(station, ALL_TIME_START, calibration.FAR_FUTURE),
         'station': station,
         'other_stations': [s for s in stations if s.pk != station.pk],
         'years': charts.years_available(station),
@@ -304,6 +308,7 @@ def station_almanac(request, slug):
     seasons = almanac.frost_dates(station, threshold)
     stations = list(visible_stations(request.user))
     return render(request, 'weather/almanac.html', {
+        'calibration_notes': calibration.overlapping(station, ALL_TIME_START, calibration.FAR_FUTURE),
         'station': station,
         'other_stations': [s for s in stations if s.pk != station.pk],
         'can_manage': request.user.is_authenticated and (request.user.is_staff or station.owner_id == request.user.pk),
@@ -327,7 +332,22 @@ def station_almanac(request, slug):
 @login_required
 def station_quality(request, slug):
     station = _owned_station(request, slug)
-    if request.method == 'POST':
+    prefs = prefs_for_request(request)
+    form = cal_form = None
+    if request.method == 'POST' and request.POST.get('form') == 'calibration':
+        cal_form = CalibrationForm(request.POST, station=station, prefs=prefs, prefix='cal')
+        if cal_form.is_valid():
+            cal = cal_form.save(request.user)
+            if cal.mode == 'reference':
+                calibration.launch(cal, 'fit')
+                messages.success(request, f'Fetching {cal.reference_station} data and fitting the correction. '
+                                          'This takes a few minutes; review it here before applying.')
+            else:
+                calibration.launch(cal, 'apply')
+                messages.success(request, 'Manual calibration added. Readings are being corrected now; charts and '
+                                          'records update within about five minutes.')
+            return redirect(f"{reverse('weather:station-quality', args=[station.slug])}#calibration")
+    elif request.method == 'POST':
         form = ExclusionForm(request.POST, station=station)
         if form.is_valid():
             exclusion = form.save(request.user)
@@ -335,7 +355,7 @@ def station_quality(request, slug):
             messages.success(request, 'Exclusion added. The readings are being set aside now; charts and records '
                                       'update within about five minutes.')
             return redirect('weather:station-quality', slug=station.slug)
-    else:
+    if form is None:
         initial = {}
         tz = station.tzinfo
         try:
@@ -350,11 +370,44 @@ def station_quality(request, slug):
         if request.GET.get('reason'):
             initial['reason'] = request.GET['reason'][:200]
         form = ExclusionForm(initial=initial, station=station)
+    if cal_form is None:
+        cal_form = CalibrationForm(station=station, prefs=prefs, prefix='cal')
     exclusions = station.exclusions.select_related('created_by')
+    calibrations = list(station.calibrations.select_related('created_by'))
     return render(request, 'weather/station_quality.html', {
-        'station': station, 'form': form, 'tab': 'quality', 'exclusions': exclusions,
-        'busy': any(e.status in ('pending', 'removing') for e in exclusions),
+        'station': station, 'form': form, 'cal_form': cal_form, 'tab': 'quality', 'exclusions': exclusions,
+        'calibrations': calibrations,
+        'busy': any(e.status in ('pending', 'removing') for e in exclusions)
+                or any(c.status in ('fitting', 'pending', 'removing') for c in calibrations),
     })
+
+
+@login_required
+@require_POST
+def station_calibration_apply(request, slug, pk):
+    station = _owned_station(request, slug)
+    cal = get_object_or_404(TempCalibration, pk=pk, station=station)
+    if TempCalibration.objects.filter(pk=cal.pk, status='fitted').update(status='pending'):
+        calibration.launch(cal, 'apply')
+        messages.success(request, 'Applying the correction. Charts and records update within about five minutes.')
+    return redirect(f"{reverse('weather:station-quality', args=[station.slug])}#calibration")
+
+
+@login_required
+@require_POST
+def station_calibration_remove(request, slug, pk):
+    station = _owned_station(request, slug)
+    cal = get_object_or_404(TempCalibration, pk=pk, station=station)
+    if cal.status in ('fitting', 'pending', 'removing'):
+        return redirect(f"{reverse('weather:station-quality', args=[station.slug])}#calibration")
+    if cal.originals.exists():
+        TempCalibration.objects.filter(pk=cal.pk).update(status='removing')
+        calibration.launch(cal, 'remove')
+        messages.success(request, 'Restoring the original readings. Charts and records update within about five minutes.')
+    else:
+        cal.delete()                     # never applied (reviewed and discarded, or a failed fit)
+        messages.success(request, 'Calibration discarded.')
+    return redirect(f"{reverse('weather:station-quality', args=[station.slug])}#calibration")
 
 
 @login_required
@@ -420,6 +473,7 @@ def station_reports(request, slug):
     query['format'] = 'csv'
     cells = [[(v, reports.digits_for(c, prefs)) for v, c in zip(row.values, report.columns)] for row in report.rows]
     return render(request, 'weather/reports.html', {
+        'calibration_notes': calibration.overlapping(station, ALL_TIME_START, calibration.FAR_FUTURE),
         'station': station,
         'other_stations': [s for s in stations if s.pk != station.pk],
         'can_manage': request.user.is_authenticated and (request.user.is_staff or station.owner_id == request.user.pk),
@@ -498,6 +552,7 @@ def station_growing(request, slug):
     }
     stations = list(visible_stations(request.user))
     return render(request, 'weather/growing.html', {
+        'calibration_notes': calibration.overlapping(station, ALL_TIME_START, calibration.FAR_FUTURE),
         'station': station, 'tab': 'growing',
         'other_stations': [s for s in stations if s.pk != station.pk],
         'can_manage': request.user.is_authenticated and (request.user.is_staff or station.owner_id == request.user.pk),

@@ -85,8 +85,11 @@ def record_push(station, reading, source):
             obs.source = source
             obs.save()
 
+    from ..calibration import apply_to_new_rows as calibrate_new_rows
     from ..quality import apply_to_new_rows
     apply_to_new_rows(station, bucket - dt.timedelta(seconds=1), bucket)
+    # A merge overwrote these columns with raw values; a fresh row has no backups anyway.
+    calibrate_new_rows(station, bucket - dt.timedelta(seconds=1), bucket, written_fields=set(reading.values))
     update_latest(station, reading, source)
     mark_dirty(station.pk, bucket)
     compute_rain_increments(station, since=bucket)
@@ -122,8 +125,10 @@ def record_archive(station, readings, source, batch_size=500):
     newest = max(readings, key=lambda r: r.timestamp)
     update_latest(station, newest, source)
     if new_rows:
+        from ..calibration import apply_to_new_rows as calibrate_new_rows
         from ..quality import apply_to_new_rows
         apply_to_new_rows(station, new_rows[0].timestamp - dt.timedelta(seconds=1), new_rows[-1].timestamp)
+        calibrate_new_rows(station, new_rows[0].timestamp - dt.timedelta(seconds=1), new_rows[-1].timestamp)
         mark_dirty(station.pk, new_rows[0].timestamp)
     return len(new_rows)
 

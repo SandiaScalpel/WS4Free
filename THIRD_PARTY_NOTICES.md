@@ -1,7 +1,7 @@
 # Third-party software bundled with WS4Free
 
-WS4Free itself is licensed under the GNU General Public License v3.0 (see
-`LICENSE`). These files are included unmodified under their own licenses.
+WS4Free itself is licensed under the GNU General Public License, version 3 or
+(at your option) any later version (`GPL-3.0-or-later`, see `LICENSE`). These files are included unmodified under their own licenses.
 
 | Component | Version | Files | License |
 |---|---|---|---|

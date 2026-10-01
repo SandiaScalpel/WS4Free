@@ -152,3 +152,27 @@ def num(cell):
     """(value, digits) → formatted number or a dash."""
     value, digits = cell
     return DASH if value is None else f'{value:,.{digits}f}'
+
+
+@register.filter
+def temp_delta(celsius, prefs=None):
+    """A temperature difference, signed: 2.5 °C → '+4.5°F'."""
+    p = _prefs(prefs)
+    return DASH if _missing(celsius) else f'{p.t_delta(celsius):+.1f}{p.label("temp")}'
+
+
+@register.filter
+def month_name(number):
+    import calendar
+    return calendar.month_abbr[int(number)]
+
+
+@register.filter
+def get_item(mapping, key):
+    return (mapping or {}).get(str(key))
+
+
+@register.filter
+def noon_offset(coef):
+    """Total correction at a sunny noon (~900 W/m²), °C."""
+    return coef.get('night', 0) + coef.get('day', 0) + coef.get('solar', 0) * 0.9
