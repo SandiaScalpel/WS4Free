@@ -65,6 +65,12 @@ def home(request):
     return render(request, 'weather/home.html', {'stations': stations})
 
 
+def station_list(request):
+    """Every station the viewer can see (header 'Stations' link)."""
+    stations = list(visible_stations(request.user).select_related('latest'))
+    return render(request, 'weather/home.html', {'stations': stations, 'is_list': True})
+
+
 def charts_home(request):
     """Header 'Charts' link: the home page's station, else the station list."""
     stations = list(visible_stations(request.user))

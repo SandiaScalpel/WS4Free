@@ -1,7 +1,6 @@
 {% load weather_units %}{# Station name, place, switcher and Overview/Charts tabs. Needs station, tab, other_stations, can_manage. #}
 <header class="flex flex-wrap items-end justify-between gap-4">
   <div>
-    {% if site.tagline and is_home %}<p class="text-sm text-muted">{{ site.tagline }}</p>{% endif %}
     <div class="flex flex-wrap items-center gap-3">
       <h1 class="text-3xl font-bold">{{ station.name }}</h1>
       {% if can_manage and not station.is_public %}<span class="badge bg-surface-2 text-muted" title="Only you can see this station">Private</span>{% endif %}

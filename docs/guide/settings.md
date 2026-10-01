@@ -31,7 +31,7 @@ Administrators can set the site-wide options under **Site settings** in the menu
 under their name:
 
 - **Site title**: shown in the header and browser tab;
-- **Tagline**: one line under the title on the dashboard;
+- **Tagline**: a short line beside the title in the header (on wide screens);
 - **About**: a few sentences for visitors;
 - **Default station**: the one the home page shows when there are several.
 

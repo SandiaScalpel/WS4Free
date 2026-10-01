@@ -7,6 +7,26 @@ each release for anything you need to do beyond the usual steps in the README.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [Semantic Versioning](https://semver.org/).
 
+## 0.4.0 — 2026-10-01
+
+### Added
+
+- A **Stations** page listing every station you can see, linked from the header
+  when there's more than one.
+
+### Changed
+
+- Header: **Help** moved to the right, beside the units switch. The **Charts**
+  and **Dashboard** links were removed (the site name goes home, and every
+  station page has its own Charts tab); old links to `/charts/` still work.
+- The site's tagline is shown beside the site title in the header, instead of
+  above the station name.
+
+### Fixed
+
+- On the home page's list of stations, each station now opens when clicked.
+  Visitors previously had no way to open a public station from the list.
+
 ## 0.3.0 — 2026-10-01
 
 ### Added

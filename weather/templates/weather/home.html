@@ -1,11 +1,12 @@
 {% extends "weather/base_generic.html" %}
 {% load weather_units %}
-{% block title %}Dashboard · WS4Free{% endblock %}
+{% block title %}{% if is_list %}Stations · {% endif %}{{ site.site_title }}{% endblock %}
 {% block content %}
 <div class="flex flex-wrap items-end justify-between gap-4">
   <div>
-    <p class="eyebrow">Dashboard</p>
-    <h1 class="mt-1 text-3xl font-bold">Your weather, all of it.</h1>
+    {% if is_list %}<h1 class="text-3xl font-bold">Stations</h1>
+    {% else %}<p class="eyebrow">Dashboard</p>
+    <h1 class="mt-1 text-3xl font-bold">Your weather, all of it.</h1>{% endif %}
   </div>
 </div>
 
@@ -13,10 +14,10 @@
 <div class="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
   {% for st in stations %}
   {% with d=st.latest.data %}
-  <article class="card p-6">
+  <article class="card relative p-6 transition hover:border-accent/50">
     <div class="flex items-start justify-between gap-3">
       <div>
-        <h2 class="text-lg font-semibold">{{ st.name }}</h2>
+        <h2 class="text-lg font-semibold"><a href="{% url 'weather:station' st.slug %}" class="text-ink no-underline after:absolute after:inset-0 after:rounded-2xl after:content-['']">{{ st.name }}</a></h2>
         <p class="text-xs text-muted">{% if st.latest %}Updated {{ st.latest.timestamp|timesince }} ago{% else %}Waiting for data{% endif %}</p>
       </div>
       {% if st.is_public %}<span class="badge bg-good/15 text-good">Public</span>{% endif %}
@@ -28,7 +29,7 @@
       <div><dt class="eyebrow">Rain today</dt><dd class="reading mt-1">{{ d.rain_daily_mm|rain:units }}</dd></div>
     </dl>
     {% if user.is_staff or st.owner_id == user.pk %}
-    <div class="mt-5 border-t border-line pt-4"><a href="{% url 'weather:station-settings' st.slug %}" class="text-sm font-medium no-underline">Manage station &rarr;</a></div>
+    <div class="mt-5 border-t border-line pt-4"><a href="{% url 'weather:station-settings' st.slug %}" class="relative z-10 text-sm font-medium no-underline">Manage station &rarr;</a></div>
     {% endif %}
   </article>
   {% endwith %}

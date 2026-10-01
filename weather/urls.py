@@ -8,6 +8,7 @@ app_name = 'weather'
 urlpatterns = [
     path('', views.home, name='home'),
     path('units/', views.set_units, name='set-units'),
+    path('stations/', views.station_list, name='stations'),
     path('charts/', views.charts_home, name='charts'),
     path('site/settings/', views.site_settings, name='site-settings'),
     path('help/', views.help_page, name='help'),

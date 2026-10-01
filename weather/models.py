@@ -248,7 +248,7 @@ class SiteSettings(models.Model):
     """Single-row site configuration, edited by staff at /site/settings/."""
     site_title = models.CharField(max_length=60, default='WS4Free',
                                   help_text='Shown in the header and browser tab, e.g. "Mesa Ridge Weather".')
-    tagline = models.CharField(max_length=140, blank=True, help_text='One line under the title on the dashboard.')
+    tagline = models.CharField(max_length=140, blank=True, help_text='A short line shown beside the site title in the header, e.g. "Backyard weather since 2021".')
     about = models.TextField(blank=True, help_text='A few sentences about the station and site, shown to visitors.')
     default_station = models.ForeignKey('Station', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
                                         help_text='Shown at the site\'s home page when there is more than one station.')

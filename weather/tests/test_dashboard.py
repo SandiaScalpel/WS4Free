@@ -157,3 +157,58 @@ class SiteSettingsTests(TestCase):
         response = self.client.get('/')
         self.assertContains(response, 'Mesa Ridge Weather')
         self.assertContains(response, 'powered by WS4Free')
+
+
+class StationListTests(TestCase):
+    """The home page lists the stations when there's more than one and no default."""
+
+    def test_each_card_opens_its_station(self):
+        from django.contrib.auth import get_user_model
+        owner = get_user_model().objects.create_user('lister', password='x' * 16)
+        a = make_station(owner=owner, name='House', mac_address='02:00:00:00:00:01', is_public=True)
+        b = make_station(owner=owner, name='Vines', mac_address='02:00:00:00:00:02', is_public=True)
+        response = self.client.get('/')
+        for st in (a, b):
+            self.assertContains(response, f'href="/stations/{st.slug}/"')
+
+    def test_header_has_no_charts_link_and_help_beside_units(self):
+        make_station(is_public=True)
+        html = self.client.get('/').content.decode()
+        header = html[html.index('<header'):html.index('</header>')]
+        self.assertNotIn('href="/charts/"', header)
+        self.assertLess(header.index('href="/help/"'), header.index('action="/units/"'))
+
+
+class HeaderTests(TestCase):
+    def test_stations_link_only_when_there_is_a_choice(self):
+        make_station(is_public=True)
+        header = lambda: (lambda h: h[h.index('<header'):h.index('</header>')])(self.client.get('/help/').content.decode())
+        self.assertNotIn('href="/stations/"', header())
+        make_station(name='Second', mac_address='02:00:00:00:00:03', is_public=True)
+        self.assertIn('href="/stations/"', header())
+        self.assertNotIn('>Dashboard<', header())
+
+    def test_private_stations_count_only_for_their_owner(self):
+        st = make_station(is_public=True)
+        make_station(owner=st.owner, name='Hidden', mac_address='02:00:00:00:00:04')
+        self.assertNotIn('href="/stations/"', self.client.get('/help/').content.decode())
+        TOTPDevice.objects.create(user=st.owner, name='phone', confirmed=True)
+        self.client.force_login(st.owner)
+        self.assertIn('href="/stations/"', self.client.get('/help/').content.decode())
+
+    def test_station_list_page(self):
+        a = make_station(is_public=True)
+        make_station(owner=a.owner, name='Hidden', mac_address='02:00:00:00:00:04')
+        SiteSettings.get(); SiteSettings.objects.update(default_station=a)
+        response = self.client.get(reverse('weather:stations'))
+        self.assertContains(response, '<h1 class="text-3xl font-bold">Stations</h1>', html=False)
+        self.assertContains(response, f'href="/stations/{a.slug}/"')
+        self.assertNotContains(response, 'Hidden')
+
+    def test_tagline_beside_title_not_on_station(self):
+        make_station(is_public=True)
+        SiteSettings.get(); SiteSettings.objects.update(tagline='Backyard weather since 2021')
+        html = self.client.get('/').content.decode()
+        header = html[html.index('<header'):html.index('</header>')]
+        self.assertIn('Backyard weather since 2021', header)
+        self.assertEqual(html.count('Backyard weather since 2021'), 1)

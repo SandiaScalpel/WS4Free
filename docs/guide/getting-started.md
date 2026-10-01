@@ -49,9 +49,13 @@ security → Appearance**; the choice follows you to any device you sign in on.
 
 ## Finding your way around
 
-- **Dashboard** and **Charts** in the header go to the site's main station.
-  On a site with several stations, use the **Stations** menu on a station page
-  to switch.
+- The site's name in the header goes to the home page: the site's main
+  station, or a list of stations when the site has several and no main one is
+  set.
+- **Stations** in the header, shown when there's more than one station you can
+  see, lists them all. On a station page, the **Stations** menu switches to
+  another station, staying on the same tab.
+- **Help**, at the top right, opens this guide.
 - Each station has tabs: **Overview**, **Charts**, **Almanac**, **Growing** and
   **Reports**. Owners also see **Manage**, which leads to **Settings**,
   **Console & uploads** and **Data quality**.
