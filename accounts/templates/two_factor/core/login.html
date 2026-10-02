@@ -42,10 +42,12 @@
   </button>
   <div id="passkey-verification-status-message" class="form-help text-center"></div>
 </template>
+{# Passkey sign-in destination: the script's default input[name='next'] would find the units switch's (this page). #}
+<input type="hidden" id="passkey-next" value="{{ request.GET.next|default:'' }}">
 {% if wizard.steps.current == 'auth' %}
-  {% render_otp_webauthn_auth_scripts username_field_selector="#id_auth-username" %}
+  {% render_otp_webauthn_auth_scripts username_field_selector="#id_auth-username" next_field_selector="#passkey-next" %}
 {% else %}
-  {% render_otp_webauthn_auth_scripts %}
+  {% render_otp_webauthn_auth_scripts next_field_selector="#passkey-next" %}
 {% endif %}
 {% endif %}
 

@@ -125,3 +125,26 @@ class PageRenderTests(TestCase):
         response = self.client.get(reverse('accounts:settings'))
         self.assertContains(response, 'Passkeys')
         self.assertContains(response, 'Enabled')
+
+
+class PasskeySignInRedirectTests(TestCase):
+    """The passkey script sends you to the value of the field its nextFieldSelector names.
+    By default that's the first input[name='next'] on the page: the header units
+    switch's, which on the sign-in page is the sign-in page itself."""
+
+    def config(self, url):
+        import json
+        import re
+        html = self.client.get(url).content.decode()
+        config = json.loads(re.search(r'<script id="otp_webauthn_config" type="application/json">(.*?)</script>', html).group(1))
+        target = re.search(r'id="passkey-next" value="([^"]*)"', html).group(1)
+        return config, target
+
+    def test_passkey_goes_to_the_requested_page_not_back_to_sign_in(self):
+        config, target = self.config('/account/login/?next=/stations/')
+        self.assertEqual(config['nextFieldSelector'], '#passkey-next')
+        self.assertEqual(target, '/stations/')
+
+    def test_without_next_it_goes_home(self):
+        config, target = self.config('/account/login/')
+        self.assertEqual((config['nextFieldSelector'], target), ('#passkey-next', ''))

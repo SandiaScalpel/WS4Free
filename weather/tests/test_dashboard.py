@@ -225,3 +225,21 @@ class TemperatureHumidityCardTests(TestCase):
         self.assertEqual([p[1] for p in series['dewpoint']], [10.8])
         response = self.client.get(reverse('weather:station-live', args=[station.slug]))
         self.assertContains(response, 'Temperature &amp; Humidity')
+
+
+class FeelsLikeLabelTests(TestCase):
+    def test_label_names_the_index(self):
+        from weather import units as u
+        station = make_station(is_public=True)
+        url = reverse('weather:station-live', args=[station.slug])
+        for f, rh, mph, label in ((20, 60, 15, '(wind chill)'), (95, 40, 5, '(heat index)'), (65, 40, 5, None)):
+            LatestReading.objects.update_or_create(station=station, defaults=dict(
+                timestamp=timezone.now(), source='api',
+                data={'temp_c': u.f_to_c(f), 'humidity': rh, 'wind_speed_ms': u.mph_to_ms(mph)}))
+            html = self.client.get(url).content.decode()
+            with self.subTest(f=f):
+                if label:
+                    self.assertIn(label, html)
+                else:
+                    self.assertNotIn('(wind chill)', html)
+                    self.assertNotIn('(heat index)', html)

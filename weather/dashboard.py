@@ -106,7 +106,7 @@ def build(station, prefs, viewer=None, now=None):
         'calibrated': calibrated,
         'age_s': int(age.total_seconds()) if age is not None else None,
         'stale': age is None or age > STALE_AFTER,
-        'feels_like_c': u.feels_like_c(temp, data.get('humidity'), data.get('wind_speed_ms')),
+        **dict(zip(('feels_like_c', 'feels_kind'), u.apparent(temp, data.get('humidity'), data.get('wind_speed_ms')))),
         'today': {
             'high_c': _max(rollup.temp_max_c if rollup else None, temp),
             'low_c': _min(rollup.temp_min_c if rollup else None, temp),

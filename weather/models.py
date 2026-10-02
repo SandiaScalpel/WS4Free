@@ -309,6 +309,10 @@ class RollupFields(models.Model):
     temp_in_min_c = models.FloatField(null=True, blank=True)
     temp_in_max_c = models.FloatField(null=True, blank=True)
     humidity_in_avg = models.FloatField(null=True, blank=True)
+    # NWS apparent temperature, from each reading's temperature, humidity and wind:
+    # lowest wind chill (≤ 50 °F, wind ≥ 3 mph) and highest heat index (≥ 80 °F).
+    windchill_min_c = models.FloatField(null=True, blank=True)
+    heatindex_max_c = models.FloatField(null=True, blank=True)
     extra = models.JSONField(default=dict, blank=True,
                              help_text='Extra sensors: {upload key: [mean, min, max]} in SI units.')
 

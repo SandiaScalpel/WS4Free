@@ -56,6 +56,20 @@ def _time_of(station, day, field, lowest=False, own=None):
     return qs.values_list('timestamp', flat=True).first()
 
 
+def _apparent_time(station, day, kind, lowest):
+    """When on `day` the lowest wind chill / highest heat index happened. It's a
+    formula of three columns, so the day's readings are scanned in Python."""
+    from .units import apparent
+    start, end = _local_day_bounds(station, day)
+    best = None
+    for ts, t, h, w in (Observation.objects.filter(station=station, timestamp__gt=start, timestamp__lte=end)
+                        .values_list('timestamp', 'temp_c', 'humidity', 'wind_speed_ms')):
+        feels, k = apparent(t, h, w)
+        if k == kind and (best is None or (feels < best[0] if lowest else feels > best[0])):
+            best = (feels, ts)
+    return best[1] if best else None
+
+
 def _extreme(qs, field, lowest=False):
     row = qs.exclude(**{f'{field}__isnull': True}).order_by(field if lowest else f'-{field}', 'date').first()
     return (row, getattr(row, field)) if row else (None, None)
@@ -80,6 +94,14 @@ def records(station, year=None):
     add('low', 'Lowest temperature', 'temp', days, 'temp_min_c', lowest=True, time_field='temp_c', own='temp_min_c')
     add('warm_night', 'Warmest night', 'temp', full, 'temp_min_c', note='Highest daily low')
     add('cold_day', 'Coldest day', 'temp', full, 'temp_max_c', lowest=True, note='Lowest daily high')
+    from .units import HEAT_INDEX, WIND_CHILL
+    for key, label, field, kind, lowest, note in (
+            ('wind_chill', 'Lowest wind chill', 'windchill_min_c', WIND_CHILL, True, 'How cold it felt in the wind'),
+            ('heat_index', 'Highest heat index', 'heatindex_max_c', HEAT_INDEX, False, 'How hot it felt with the humidity')):
+        row, value = _extreme(days, field, lowest)
+        if row is not None:
+            out.append(Record(key, label, 'temp', value, row.date, note=note,
+                              time=_apparent_time(station, row.date, kind, lowest)))
     add('wet_day', 'Wettest day', 'rain', days, 'rain_mm')
     add('rate', 'Heaviest rain rate', 'rate', days, 'rain_rate_max_mmh', time_field='rain_rate_mmh')
     add('gust', 'Strongest gust', 'speed', days, 'wind_gust_max_ms', time_field='wind_gust_ms')

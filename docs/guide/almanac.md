@@ -16,6 +16,7 @@ and the record high and low for that date.
 All-time records, or one year's, from the menu:
 
 - highest and lowest temperature, with the time they happened;
+- lowest wind chill and highest heat index, with the time;
 - warmest night (highest daily low) and coldest day (lowest daily high);
 - wettest day and wettest month, heaviest rain rate;
 - strongest gust;

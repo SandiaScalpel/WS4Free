@@ -12,9 +12,10 @@ show that last reading, slightly dimmed.
 
 ## The tiles
 
-- **Temperature & Humidity**: the current temperature, *feels like* (heat
-  index when it's hot and humid, wind chill when it's cold and windy,
-  otherwise the temperature itself), today's high and low, humidity and dew
+- **Temperature & Humidity**: the current temperature, *feels like* (labelled
+  **wind chill** at 50 °F or colder with wind of 3 mph or more, **heat index**
+  at 80 °F or warmer, otherwise the temperature itself; US National Weather
+  Service formulas), today's high and low, humidity and dew
   point. The chart shows the last 24 hours of temperature, dew point and
   humidity; humidity uses its own 0–100% scale, so hover for exact values.
   When the dew point line meets the temperature line, the air is saturated

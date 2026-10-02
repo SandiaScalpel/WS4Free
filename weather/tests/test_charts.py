@@ -177,3 +177,20 @@ class ChartsHomeTests(TestCase):
 
     def test_no_public_station_goes_home(self):
         self.assertRedirects(self.client.get(reverse('weather:charts')), '/', fetch_redirect_response=False)
+
+
+class ApparentTemperatureSeriesTests(TestCase):
+    def test_raw_columns_only_where_each_index_applies(self):
+        from weather import charts as ch, units as u
+        from weather.units import UnitPrefs
+        station = make_station()
+        t0 = dt.datetime(2025, 1, 10, 12, tzinfo=dt.UTC)
+        for i, (f, rh, mph) in enumerate(((20, 60, 15), (95, 40, 5), (65, 40, 5))):
+            Observation.objects.create(station=station, timestamp=t0 + dt.timedelta(minutes=5 * (i + 1)), source='api',
+                                       temp_c=u.f_to_c(f), humidity=rh, wind_speed_ms=u.mph_to_ms(mph))
+        s = ch.history(station, t0, t0 + dt.timedelta(hours=1), UnitPrefs.for_system('imperial'))['series']
+        self.assertEqual([v is not None for v in s['windchill']], [True, False, False])
+        self.assertEqual([v is not None for v in s['heatindex']], [False, True, False])
+        self.assertLess(s['windchill'][0], 20)
+        csv_head = ch.history_csv(station, t0, t0 + dt.timedelta(hours=1), UnitPrefs.for_system('imperial')).splitlines()[0]
+        self.assertIn('wind chill (°F)', csv_head)

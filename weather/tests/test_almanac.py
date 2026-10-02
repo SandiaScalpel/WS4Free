@@ -185,10 +185,44 @@ class PageTests(TestCase):
 
     def test_public_page_renders_all_sections(self):
         Station.objects.update(is_public=True)
-        response = self.client.get(self.url, {'date': '2026-10-01', 'records': '2025', 'frost': 'freeze'})
+        response = self.client.get(self.url, {'records': '2025', 'frost': 'freeze'})   # date = today
         for text in ('On this day', 'Records', 'Frost dates', 'Hard freeze', '68.0°F', 'Wettest day'):
             self.assertContains(response, text)
 
     def test_bad_parameters_fall_back(self):
         Station.objects.update(is_public=True)
         self.assertEqual(self.client.get(self.url, {'date': 'nope', 'records': '1066'}).status_code, 200)
+
+
+class ApparentTemperatureRecordTests(TestCase):
+    """Lowest wind chill / highest heat index: summarised by the rollups, timed from readings."""
+
+    def test_records_from_rollups_with_time(self):
+        from weather import units as u
+        from weather.models import Observation
+        from weather.rollups import refresh_station
+        station = make_station()
+        tz = station.tzinfo
+        rows = [  # (local time, °F, humidity %, mph)
+            (dt.datetime(2025, 1, 10, 3, 0), -5, 60, 1),      # colder, but calm: no wind chill
+            (dt.datetime(2025, 1, 10, 7, 0), 15, 60, 20),     # wind chill ≈ −2 °F  ← record
+            (dt.datetime(2025, 1, 10, 8, 0), 20, 60, 15),     # later and milder (≈ 6 °F)
+            (dt.datetime(2025, 7, 10, 15, 0), 95, 40, 5),     # heat index ≈ 98 °F  ← record
+            (dt.datetime(2025, 7, 10, 16, 0), 92, 40, 5),
+        ]
+        for local, f, rh, mph in rows:
+            Observation.objects.create(station=station, timestamp=local.replace(tzinfo=tz), source='api',
+                                       temp_c=u.f_to_c(f), humidity=rh, wind_speed_ms=u.mph_to_ms(mph))
+        Station.objects.filter(pk=station.pk).update(rollup_dirty_from=dt.datetime(2025, 1, 1, tzinfo=dt.UTC))
+        refresh_station(station, now=dt.datetime(2025, 8, 1, tzinfo=dt.UTC))
+        recs = {r.key: r for r in almanac.records(station)}
+        chill, heat = recs['wind_chill'], recs['heat_index']
+        self.assertAlmostEqual(u.c_to_f(chill.value), u.c_to_f(u.feels_like_c(u.f_to_c(15), 60, u.mph_to_ms(20))))
+        self.assertLess(u.c_to_f(chill.value), 0)
+        self.assertEqual(chill.time.astimezone(tz).hour, 7)
+        # The 07:00 reading closes the 06:00–07:00 interval, so it belongs to that hour.
+        from weather.models import HourlyRollup
+        hour = HourlyRollup.objects.get(period_start=dt.datetime(2025, 1, 10, 6, tzinfo=tz).astimezone(dt.UTC))
+        self.assertAlmostEqual(hour.windchill_min_c, chill.value)
+        self.assertGreater(u.c_to_f(heat.value), 95)
+        self.assertEqual((heat.date, heat.time.astimezone(tz).hour), (dt.date(2025, 7, 10), 15))

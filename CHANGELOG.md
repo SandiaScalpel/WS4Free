@@ -7,6 +7,27 @@ each release for anything you need to do beyond the usual steps in the README.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [Semantic Versioning](https://semver.org/).
 
+## 0.6.0 — 2026-10-02
+
+### Added
+
+- **Wind chill and heat index**: the dashboard's *feels like* says which one
+  applies; the Charts temperature chart shows them while they apply (lowest
+  wind chill and highest heat index per hour or day on summaries), and the CSV
+  download has both columns; the almanac records the lowest wind chill and
+  highest heat index, with the time.
+
+### Fixed
+
+- Signing in with a passkey left you on the sign-in page (signed in). It now
+  goes to the page you were trying to open, or the home page.
+
+### Upgrading
+
+- Run `migrate`. The summaries of your whole history are then rebuilt once in
+  the background to add wind chill and heat index (a few minutes for several
+  years of data).
+
 ## 0.5.0 — 2026-10-01
 
 ### Added

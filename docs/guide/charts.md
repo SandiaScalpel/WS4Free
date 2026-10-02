@@ -14,7 +14,9 @@ Zoom in far enough and the finer detail loads automatically.
 
 ## History
 
-Temperature (with dew point, and the low–high range shaded on summaries),
+Temperature (with dew point, the low–high range shaded on summaries, and
+wind chill and heat index while they apply: on hourly and daily summaries,
+the lowest wind chill and highest heat index of each hour or day),
 humidity, wind speed and gust, rain, pressure and solar radiation, plus any
 [extra sensors](extra-sensors.md) the station has.
 

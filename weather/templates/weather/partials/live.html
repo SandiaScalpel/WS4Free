@@ -29,7 +29,9 @@
           <span class="text-7xl leading-none sm:text-8xl">{{ now.temp_c|temp_value:units }}</span>
           <span class="mt-2 ml-1 text-3xl text-muted">{{ units|unit_label:"temp" }}</span>
         </p>
-        <p class="mt-3 text-sm text-muted">Feels like <span class="font-medium text-ink">{{ feels_like_c|temp:units }}</span>{% if calibrated %}
+        <p class="mt-3 text-sm text-muted">Feels like <span class="font-medium text-ink">{{ feels_like_c|temp:units }}</span>{% if feels_kind == 'wind_chill' %}
+          <span class="text-faint" title="Wind chill: at 50 °F or colder with wind of 3 mph or more">(wind chill)</span>{% elif feels_kind == 'heat_index' %}
+          <span class="text-faint" title="Heat index: at 80 °F or warmer, from temperature and humidity">(heat index)</span>{% endif %}{% if calibrated %}
           <span class="badge ml-1 bg-warn/15 text-warn" title="Corrected for a sensor that reads wrong; an estimate, not a direct measurement">Corrected</span>{% endif %}</p>
       </div>
       <dl class="grid grid-cols-2 gap-x-6 gap-y-4 text-sm sm:justify-self-end">

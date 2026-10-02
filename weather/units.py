@@ -52,12 +52,20 @@ def dewpoint_c(temp_c, humidity):
     return b * gamma / (a - gamma)
 
 
+WIND_CHILL, HEAT_INDEX = 'wind_chill', 'heat_index'
+
+
 def feels_like_c(temp_c, humidity, wind_ms):
     """Apparent temperature, the US National Weather Service way: heat index at
     80 °F and above, wind chill at 50 °F and below with wind of at least 3 mph,
     otherwise the air temperature."""
+    return apparent(temp_c, humidity, wind_ms)[0]
+
+
+def apparent(temp_c, humidity, wind_ms):
+    """(feels-like °C, which index applied: WIND_CHILL, HEAT_INDEX or None)."""
     if temp_c is None:
-        return None
+        return None, None
     t = c_to_f(temp_c)
     if t >= 80 and humidity is not None:
         rh = humidity
@@ -70,12 +78,12 @@ def feels_like_c(temp_c, humidity, wind_ms):
                 hi -= ((13 - rh) / 4) * math.sqrt((17 - abs(t - 95)) / 17)
             elif rh > 85 and 80 <= t <= 87:
                 hi += ((rh - 85) / 10) * ((87 - t) / 5)
-        return f_to_c(hi)
+        return f_to_c(hi), HEAT_INDEX
     mph = (wind_ms or 0) / MPH_TO_MS
     if t <= 50 and mph >= 3:
         wc = 35.74 + 0.6215 * t - 35.75 * mph ** 0.16 + 0.4275 * t * mph ** 0.16
-        return f_to_c(wc)
-    return temp_c
+        return f_to_c(wc), WIND_CHILL
+    return temp_c, None
 
 
 COMPASS_POINTS = ('N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',

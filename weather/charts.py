@@ -16,6 +16,7 @@ from django.db.models.functions import Floor, Mod
 
 from .models import DailyRollup, HourlyRollup, Observation
 from .sensors import station_sensors
+from .units import HEAT_INDEX, WIND_CHILL, apparent
 
 RAW_MAX = dt.timedelta(days=3)
 HOURLY_MAX = dt.timedelta(days=120)
@@ -67,7 +68,13 @@ def _with_gaps(rows, max_gap_ms):
 
 
 HISTORY_COLUMNS = ('time', 'temp', 'temp_min', 'temp_max', 'dewpoint', 'humidity', 'wind', 'gust',
-                   'rain', 'pressure', 'solar', 'uv')
+                   'rain', 'pressure', 'solar', 'uv', 'windchill', 'heatindex')
+
+
+def _apparent_pair(temp_c, humidity, wind_ms):
+    """(wind chill, heat index) for one reading; each None unless it applies."""
+    feels, kind = apparent(temp_c, humidity, wind_ms)
+    return (feels if kind == WIND_CHILL else None), (feels if kind == HEAT_INDEX else None)
 
 
 # Extra-sensor values in the viewer's units, by unit kind (weather.sensors).
@@ -143,6 +150,7 @@ def history(station, start, end, prefs, include_private=False):
                  _r(prefs.t(t), d['temp']), _r(prefs.t(tmin), d['temp']), _r(prefs.t(tmax), d['temp']),
                  _r(prefs.t(dp), d['temp']), _r(h, 0), _r(prefs.w(w), 1), _r(prefs.w(g), 1),
                  _r(prefs.r(rain), d['rain'] + 1), _r(prefs.p(p), d['pressure'] + 1), _r(sol, 0), _r(uv, 1)]
+                + [_r(prefs.t(v), d['temp']) for v in _apparent_pair(t, h, w)]
                 + [_sensor_display(s, s.si((extra or {}).get(s.key)), prefs) for s, _ in sensors]
                 for ts, iv, t, tmin, tmax, dp, h, w, g, rain, p, sol, uv, extra in qs]
         step_ms = 300_000
@@ -174,6 +182,9 @@ def history(station, start, end, prefs, include_private=False):
                 _r(prefs.p(r.pressure_avg_hpa), d['pressure'] + 1),
                 _r(r.solar_max_wm2 if res == 'daily' else r.solar_avg_wm2, 0),
                 _r(r.uv_max, 1),
+                # Lowest wind chill / highest heat index of the hour or day.
+                _r(prefs.t(r.windchill_min_c), d['temp']),
+                _r(prefs.t(r.heatindex_max_c), d['temp']),
             ] + [
                 # Lightning keeps the counter's highest value (strikes so far today); the rest their mean.
                 _sensor_display(sen, (r.extra.get(sen.key) or [None, None, None])[2 if sen.kind == 'lightning' else 0], prefs)
@@ -205,7 +216,8 @@ def history_csv(station, start, end, prefs, include_private=False):
     header = ['time (' + station.timezone + ')', f'temperature ({labels["temp"]})', f'temp min ({labels["temp"]})',
               f'temp max ({labels["temp"]})', f'dew point ({labels["temp"]})', 'humidity (%)',
               f'wind ({labels["wind"]})', f'gust ({labels["wind"]})', f'rain ({labels["rain"]})',
-              f'pressure ({labels["pressure"]})', 'solar (W/m²)', 'UV index']
+              f'pressure ({labels["pressure"]})', 'solar (W/m²)', 'UV index',
+              f'wind chill ({labels["temp"]})', f'heat index ({labels["temp"]})']
     columns = list(HISTORY_COLUMNS[1:])
     for chart in data['sensor_charts']:
         unit = chart['unit']

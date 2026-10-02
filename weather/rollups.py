@@ -18,8 +18,9 @@ Grouping rules that follow from the data model:
   * Averages are weighted by `interval_s`; min/max read Coalesce(x_min, x) so
     downsampled rows contribute their true extremes.
   * Extra sensors (weather.sensors) live in the `extra` JSON column, which can't
-    be aggregated portably in SQL; they are summarised in Python, and only for
-    stations that have any. Downsampled rows keep just the last reading of their
+    be aggregated portably in SQL, and wind chill / heat index are formulas of
+    three columns; both are summarised in Python (extra sensors only for
+    stations that have any). Downsampled rows keep just the last reading of their
     15 minutes for these.
 """
 import datetime as dt
@@ -35,6 +36,7 @@ from django.db.models.functions import Coalesce, Cos, Radians, Sin, TruncDay, Tr
 from .ingest.rain import compute_rain_increments
 from .models import DailyRollup, HourlyRollup, Observation, Station
 from .sensors import summarise
+from .units import HEAT_INDEX, WIND_CHILL, apparent
 
 log = logging.getLogger(__name__)
 
@@ -140,18 +142,27 @@ def _grouped(station, period_expr, start, end):
     )
 
 
-def _sensor_summaries(station, start, end, period_of):
-    """{period: {key: [mean, min, max]}} for the station's extra sensors in (start, end]."""
+def _python_summaries(station, start, end, period_of):
+    """{period: RollupFields kwargs} computed in Python for (start, end]: extra
+    sensors, lowest wind chill and highest heat index."""
     keys = list(station.sensors or ())
-    if not keys:
-        return {}
-    by_period = {}
+    columns = ['timestamp', 'interval_s', 'temp_c', 'humidity', 'wind_speed_ms'] + (['extra'] if keys else [])
     rows = (Observation.objects.filter(station=station, timestamp__gt=start, timestamp__lte=end)
-            .order_by('timestamp').values_list('timestamp', 'interval_s', 'extra'))
-    for ts, interval_s, extra in rows:
-        if extra:
-            by_period.setdefault(period_of(ts - dt.timedelta(seconds=1)), []).append((interval_s, extra))
-    return {period: summarise(items, keys) for period, items in by_period.items()}
+            .order_by('timestamp').values_list(*columns))
+    sensor_rows, out = {}, {}
+    for row in rows:
+        period = period_of(row[0] - dt.timedelta(seconds=1))
+        values = out.setdefault(period, {'windchill_min_c': None, 'heatindex_max_c': None})
+        feels, kind = apparent(row[2], row[3], row[4])
+        if kind == WIND_CHILL and (values['windchill_min_c'] is None or feels < values['windchill_min_c']):
+            values['windchill_min_c'] = feels
+        elif kind == HEAT_INDEX and (values['heatindex_max_c'] is None or feels > values['heatindex_max_c']):
+            values['heatindex_max_c'] = feels
+        if keys and row[5]:
+            sensor_rows.setdefault(period, []).append((row[1], row[5]))
+    for period, values in out.items():
+        values['extra'] = summarise(sensor_rows[period], keys) if period in sensor_rows else {}
+    return out
 
 
 def rebuild_hourly(station, since, until):
@@ -161,11 +172,11 @@ def rebuild_hourly(station, since, until):
     hour_of = lambda t: t.astimezone(dt.UTC).replace(minute=0, second=0, microsecond=0)  # noqa: E731
     while start < until:
         end = min(start + CHUNK, until)
-        sensors = _sensor_summaries(station, start, end, hour_of)
+        computed = _python_summaries(station, start, end, hour_of)
         rows = []
         for row in _grouped(station, TruncHour(COVERING, tzinfo=dt.UTC), start, end):
             period = row['period'].astimezone(dt.UTC)
-            rows.append(HourlyRollup(station=station, period_start=period, extra=sensors.get(period, {}),
+            rows.append(HourlyRollup(station=station, period_start=period, **computed.get(period, {}),
                                      **_finish(row, 3600)))
         with transaction.atomic():
             HourlyRollup.objects.filter(station=station, period_start__gte=start, period_start__lt=end).delete()
@@ -188,7 +199,7 @@ def rebuild_daily(station, since_date, until):
     while day <= last_day:
         chunk_end = min(day + dt.timedelta(days=31), last_day + dt.timedelta(days=1))
         start, end = _local_midnight(day, tz), _local_midnight(chunk_end, tz)
-        sensors = _sensor_summaries(station, start, end, lambda t: t.astimezone(tz).date())
+        computed = _python_summaries(station, start, end, lambda t: t.astimezone(tz).date())
         rows = []
         for row in _grouped(station, TruncDay(COVERING, tzinfo=tz), start, end):
             date = row['period'].astimezone(tz).date()
@@ -197,7 +208,7 @@ def rebuild_daily(station, since_date, until):
             # arithmetic in Python and would make every DST day 24 h long.
             length = (_local_midnight(next_day, tz).astimezone(dt.UTC)
                       - _local_midnight(date, tz).astimezone(dt.UTC)).total_seconds()
-            rows.append(DailyRollup(station=station, date=date, extra=sensors.get(date, {}), **_finish(row, length)))
+            rows.append(DailyRollup(station=station, date=date, **computed.get(date, {}), **_finish(row, length)))
         with transaction.atomic():
             DailyRollup.objects.filter(station=station, date__gte=day, date__lt=chunk_end).delete()
             DailyRollup.objects.bulk_create(rows, batch_size=1000)

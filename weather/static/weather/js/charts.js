@@ -172,7 +172,8 @@
         const per = { raw: 'per 5 minutes', hourly: 'per hour', daily: 'per day' }[res];
         this.historyCharts = [
           { key: 'temp', title: `Temperature (${u.temp})`, tall: true,
-            note: res === 'raw' ? '' : 'Mean, with the low–high range shaded' },
+            note: res === 'raw' ? 'Wind chill and heat index where they apply'
+              : `Mean, low–high range shaded; lowest wind chill and highest heat index ${res === 'hourly' ? 'each hour' : 'each day'}` },
           { key: 'humidity', title: 'Humidity (%)', note: res === 'raw' ? '' : 'Mean' },
           { key: 'wind', title: `Wind (${u.wind})`, note: res === 'raw' ? '' : 'Mean speed and peak gust' },
           { key: 'rain', title: `Rain (${u.rain})`, note: `Bars: total ${per} · line: accumulated since the start of the range` },
@@ -262,6 +263,12 @@
             series.push(line('Temperature', 'temp', pal[0], false));
             series.push(line('Dew point', 'dewpoint', pal[1], false));
             const legend = [{ name: 'Temperature', icon: 'rect' }, { name: 'Dew point', icon: 'rect' }];
+            // Shown only while they apply (≤ 50 °F and windy / ≥ 80 °F), so they don't hide the temperature line.
+            [['Wind chill', 'windchill', pal[2]], ['Heat index', 'heatindex', pal[3]]].forEach(([name, key, color]) => {
+              if (!hasAny(key)) return;
+              series.push(line(name, key, color, false));
+              legend.push({ name, icon: 'rect' });
+            });
             if (band) legend.push({ name: 'Low–high range', icon: 'rect', itemStyle: { opacity: 0.35 } });
             return base('temp', series, legend, d.temp);
           },
