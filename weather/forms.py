@@ -20,11 +20,13 @@ class StationSettingsForm(forms.ModelForm):
 
     class Meta:
         model = Station
-        fields = ['name', 'place', 'is_public', 'timezone', 'latitude', 'longitude', 'ambient_api_enabled', 'rain_gauge']
+        fields = ['name', 'place', 'is_public', 'timezone', 'latitude', 'longitude', 'ambient_api_enabled', 'rain_gauge',
+                  'forecast_enabled']
         labels = {
             'is_public': 'Public station',
             'ambient_api_enabled': 'Fill gaps from ambientweather.net',
             'rain_gauge': 'Rain sensor',
+            'forecast_enabled': 'Show the forecast on the dashboard',
         }
         help_texts = {
             'name': 'Shown on the dashboard and in page titles.',
@@ -57,6 +59,8 @@ class StationSettingsForm(forms.ModelForm):
         h = self.instance.anemometer_height_m or 2.0
         self.initial['anemometer_height'] = round(h * FEET_PER_METER, 1) if self.imperial else round(h, 1)
         self.fields['rain_gauge'].required = False
+        self.fields['forecast_enabled'].help_text = ('A daily forecast from Open-Meteo (free, no account needed). Sends the '
+                                                     'station\'s location, rounded to about 1 km, to open-meteo.com.')
         # One name + public switch per extra sensor the station has reported.
         from .sensors import KIND_ORDER, describe
         self.sensor_rows = []

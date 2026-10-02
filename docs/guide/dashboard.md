@@ -29,6 +29,12 @@ show that last reading, slightly dimmed.
   (steady, rising, falling, or fast).
 - **Sun**: UV index with its WHO category, solar radiation, and today's peak UV.
 - **Indoors** (owner only): the console's indoor temperature and humidity.
+- **Forecast**: the next days from [Open-Meteo](https://open-meteo.com/): an
+  icon for the expected weather, the high and low, and the chance of rain, plus
+  the expected amount when there's more than a trace. As many days are shown
+  as fit the width of your screen. It updates hourly. The station owner can
+  turn it off under **Settings → Data sources**; it needs the station's
+  latitude and longitude, and sends them to Open-Meteo rounded to about 1 km.
 - **More sensors**, when the station has any: extra temperature channels,
   soil, air quality, lightning and so on. See [Extra sensors](extra-sensors.md).
 

@@ -208,6 +208,9 @@ DEFAULT_UNIT_SYSTEM = env('DEFAULT_UNIT_SYSTEM', default='imperial')
 # 0 disables downsampling (the default): keep every raw row forever.
 RAW_RETENTION_YEARS = env.int('RAW_RETENTION_YEARS', default=0)
 
+# Dashboard forecast (weather.forecast). Empty turns forecasts off site-wide.
+FORECAST_URL = env('FORECAST_URL', default='https://api.open-meteo.com/v1/forecast')
+
 # Push ingest. INGEST_CAPTURE logs every raw upload (handy while setting up a
 # console or debugging a parser); rejected and unusual uploads are always logged.
 INGEST_CAPTURE = env.bool('INGEST_CAPTURE', default=False)

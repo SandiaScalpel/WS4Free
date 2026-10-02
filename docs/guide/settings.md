@@ -17,7 +17,8 @@ Owners reach these from **Manage** on any station page.
 - **Wind sensor height**: used to adjust wind to the standard 2 m height for
   evapotranspiration.
 - **Data sources**: whether to fill gaps from ambientweather.net (Ambient
-  stations), and which **rain sensor** to record when the console has two.
+  stations), which **rain sensor** to record when the console has two, and
+  whether to show the **forecast** on the dashboard.
 - **Extra sensors**: names and public switches; see
   [Extra sensors](extra-sensors.md).
 

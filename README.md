@@ -15,8 +15,9 @@ good doing it, in light and dark.
   Ecowitt formats), plus the Ambient Weather API to fill gaps and import your
   full history.
 - **Live dashboard** that updates itself: temperature and feels-like, wind
-  compass, rain (today, storm, month, year), pressure trend, sun and UV, and
-  24-hour sparklines.
+  compass, rain (today, storm, month, year), pressure trend, sun and UV,
+  24-hour sparklines, and a daily forecast from
+  [Open-Meteo](https://open-meteo.com/) (free, no API key).
 - **Charts:** any date range with synchronised zoom, rain with a running total,
   wind rose, calendar heatmap, and year-over-year comparisons.
 - **Almanac:** this day in past years, all-time and yearly records, and first
@@ -315,6 +316,16 @@ set aside, not deleted, so charts, records, frost dates, reports and the
 dashboard ignore them. Removing the exclusion restores them exactly. Almanac
 records have an "Exclude these readings…" shortcut for when a record looks
 wrong.
+
+## Forecast
+
+The dashboard shows a daily forecast from [Open-Meteo](https://open-meteo.com/)
+(weather data licensed CC BY 4.0, credited on the page): no account or API key
+needed, but the server needs outbound HTTPS. It is fetched at most hourly per
+station, when the dashboard is viewed, and only the station's location rounded
+to two decimals (about 1 km) is sent. Owners can turn it off per station; set
+`FORECAST_URL=` (empty) in `.env` to turn it off for the whole site. Open-Meteo's
+free API is for non-commercial use.
 
 ## Temperature calibration
 

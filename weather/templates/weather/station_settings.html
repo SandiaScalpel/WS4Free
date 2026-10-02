@@ -62,6 +62,13 @@
         </div>
       </div>
       <div class="mt-4 max-w-sm">{% include "weather/partials/field.html" with field=form.rain_gauge %}</div>
+      <div class="mt-4 flex items-start gap-3">
+        <input type="checkbox" name="{{ form.forecast_enabled.html_name }}" id="{{ form.forecast_enabled.id_for_label }}" class="mt-0.5" {% if form.forecast_enabled.value %}checked{% endif %}>
+        <div>
+          <label for="{{ form.forecast_enabled.id_for_label }}" class="mb-0">{{ form.forecast_enabled.label }}</label>
+          <span class="form-help">{{ form.forecast_enabled.help_text }}{% if not station.latitude %} Needs the latitude and longitude above.{% endif %}</span>
+        </div>
+      </div>
       <p class="mt-4 text-sm text-muted">Console uploads are set up on the <a href="{% url 'weather:station-setup' station.slug %}">Console &amp; uploads</a> tab.</p>
     </section>
 

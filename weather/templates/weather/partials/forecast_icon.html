@@ -1,0 +1,21 @@
+{# Daily forecast icon. Needs `icon` (weather.forecast.CODES) and `label`. Colours are theme tokens. #}
+<svg viewBox="0 0 32 32" class="mx-auto size-9" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="{{ label }}"><title>{{ label }}</title>
+{% if icon == 'sun' %}
+  <g class="text-warn" stroke="currentColor"><circle cx="16" cy="16" r="5.5" fill="currentColor" fill-opacity=".25"/><path d="M16 3.5v3M16 25.5v3M3.5 16h3M25.5 16h3M7.2 7.2l2.1 2.1M22.7 22.7l2.1 2.1M7.2 24.8l2.1-2.1M22.7 9.3l2.1-2.1"/></g>
+{% elif icon == 'partly' %}
+  <g class="text-warn" stroke="currentColor"><circle cx="12" cy="12" r="4.5" fill="currentColor" fill-opacity=".25"/><path d="M12 2.5v2.5M2.5 12H5M5.3 5.3l1.8 1.8M18.7 5.3l-1.8 1.8M5.3 18.7l1.8-1.8"/></g>
+  <path class="text-muted" stroke="currentColor" fill="var(--ws-surface-2)" d="M11 27h13.5a5 5 0 0 0 .6-10 7 7 0 0 0-13.3 1.7A4.2 4.2 0 0 0 11 27Z"/>
+{% elif icon == 'fog' %}
+  <path class="text-muted" stroke="currentColor" d="M9 15.5a7 7 0 0 1 13.6-1.8 4.6 4.6 0 0 1 2.4 1.8M5 20h22M7 24.5h18M10 29h12"/>
+{% else %}
+  {% if icon == 'showers' %}<g class="text-warn" stroke="currentColor"><circle cx="23" cy="8.5" r="3.5" fill="currentColor" fill-opacity=".25"/><path d="M23 1.5v1.5M29.5 8.5H28M27.6 3.9l-1 1"/></g>{% endif %}
+  <path class="text-muted" stroke="currentColor" fill="var(--ws-surface-2)" d="M8.5 21h15.5a5.5 5.5 0 0 0 .7-11 8 8 0 0 0-15.3 2A4.5 4.5 0 0 0 8.5 21Z"/>
+  {% if icon == 'drizzle' %}<path class="text-cool" stroke="currentColor" d="M11 25v.5M16 26v.5M21 25v.5M13.5 29v.5M18.5 29v.5"/>
+  {% elif icon == 'rain' %}<path class="text-cool" stroke="currentColor" d="M11 24l-1.5 5M16 24l-1.5 5M21 24l-1.5 5"/>
+  {% elif icon == 'showers' %}<path class="text-cool" stroke="currentColor" d="M12 24l-1.5 5M18 24l-1.5 5"/>
+  {% elif icon == 'snow' %}<path class="text-cool" stroke="currentColor" d="M11 25.5v3M9.5 27h3M16 24v3M14.5 25.5h3M21 25.5v3M19.5 27h3"/>
+  {% elif icon == 'sleet' %}<path class="text-cool" stroke="currentColor" d="M11 24l-1.5 5M21 24l-1.5 5M16 25.5v3M14.5 27h3"/>
+  {% elif icon == 'thunder' %}<path class="text-warn" stroke="currentColor" fill="currentColor" fill-opacity=".3" d="M17 22l-4 5.5h4l-2 4.5 6-7h-4l2.5-3"/><path class="text-cool" stroke="currentColor" d="M10 24l-1 3.5M24 24l-1 3.5"/>
+  {% endif %}
+{% endif %}
+</svg>

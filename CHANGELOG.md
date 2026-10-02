@@ -7,6 +7,21 @@ each release for anything you need to do beyond the usual steps in the README.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [Semantic Versioning](https://semver.org/).
 
+## 0.7.0 — 2026-10-02
+
+### Added
+
+- **Forecast** on the dashboard, beside the indoor tile: as many days as fit,
+  each with an icon (clear, partly cloudy, rain, showers, thunderstorms, snow,
+  fog…), the high and low, the chance of rain and the expected amount. Data
+  from Open-Meteo (free, no API key), refreshed hourly. Owners can turn it off
+  per station under **Settings → Data sources**; `FORECAST_URL=` turns it off
+  site-wide.
+
+### Upgrading
+
+- Run `migrate`. The server needs outbound HTTPS to `api.open-meteo.com`.
+
 ## 0.6.0 — 2026-10-02
 
 ### Added

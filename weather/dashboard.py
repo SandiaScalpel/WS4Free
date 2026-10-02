@@ -12,6 +12,7 @@ import datetime as dt
 from django.db.models import Sum
 from django.utils import timezone
 
+from . import forecast as forecasts
 from . import sensors as sensor_catalog
 from . import units as u
 from .models import DailyRollup, LatestReading, Observation
@@ -123,6 +124,7 @@ def build(station, prefs, viewer=None, now=None):
         'pressure_trend': u.pressure_trend(change),
         'uv': u.uv_category(data.get('uv_index')),
         'wind_compass': u.compass(data.get('wind_dir_deg')),
+        'forecast': forecasts.display(forecasts.current(station, now=now), prefs, today),
         'sensor_groups': sensor_catalog.dashboard_groups(station, latest, rollup.extra if rollup else {}, prefs,
                                                          include_private=can_see_private),
         'low_batteries': sensor_catalog.low_batteries(latest.extra, latest.source) if latest and can_see_private else [],

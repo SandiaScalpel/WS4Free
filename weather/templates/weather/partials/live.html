@@ -159,6 +159,26 @@
     </dl>
   </section>
   {% endif %}
+  {% if forecast %}
+  {# ── Forecast (weather.forecast). The grid keeps one row of whole days; days that don't fit drop to zero-height rows and are clipped. ── #}
+  <section class="card min-w-0 p-6 {% if show_indoor %}lg:col-span-2{% else %}lg:col-span-3{% endif %}" aria-labelledby="forecast-label">
+    <div class="flex items-baseline justify-between gap-3">
+      <h2 id="forecast-label" class="text-sm font-medium text-muted">Forecast</h2>
+      <a href="https://open-meteo.com/" class="text-xs text-faint no-underline hover:text-muted" rel="noopener" target="_blank">Weather data by Open-Meteo.com</a>
+    </div>
+    <ol class="mt-3 grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] grid-rows-[auto] auto-rows-[0] gap-x-2 overflow-hidden">
+      {% for d in forecast %}
+      <li class="rounded-lg bg-surface-2 px-2 py-3 text-center">
+        <p class="text-xs font-medium {% if d.day == 'Today' %}text-ink{% else %}text-muted{% endif %}" title="{{ d.date|date:'l, F j' }}">{{ d.day }}</p>
+        <div class="mt-1.5">{% include "weather/partials/forecast_icon.html" with icon=d.icon label=d.label %}</div>
+        <p class="mt-1.5 text-sm tabular-nums"><span class="font-semibold">{{ d.high_c|temp_round:units }}</span> <span class="text-muted">{{ d.low_c|temp_round:units }}</span></p>
+        <p class="mt-0.5 text-xs tabular-nums {% if d.rain_pct >= 30 %}text-cool{% else %}text-faint{% endif %}" title="Chance of rain{% if d.rain_mm %}, and expected amount{% endif %}">
+          {% if d.rain_pct is not None %}{{ d.rain_pct }}%{% else %}&nbsp;{% endif %}{% if d.rain_mm %} · {{ d.rain_mm|rain:units }}{% endif %}</p>
+      </li>
+      {% endfor %}
+    </ol>
+  </section>
+  {% endif %}
 </div>
 
 {% if sensor_groups or low_batteries %}

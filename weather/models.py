@@ -71,6 +71,10 @@ class Station(models.Model):
         help_text='Fetch archive records from ambientweather.net (needs AMBIENT_* keys in .env).',
     )
 
+    forecast_enabled = models.BooleanField(
+        'show forecast', default=True,
+        help_text='Show a daily forecast from Open-Meteo on the dashboard. Sends the station\'s approximate '
+                  'location (rounded to about 1 km) to open-meteo.com.')
     RAIN_GAUGE_CHOICES = [
         ('auto', 'Automatic'),
         ('tipping', 'Tipping-bucket gauge'),
@@ -456,3 +460,18 @@ class CalibratedValue(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['observation', 'field'], name='uniq_calibrated_observation_field')]
+
+
+class StationForecast(models.Model):
+    """The latest daily forecast for a station (weather.forecast), refreshed at most
+    hourly when the dashboard is viewed. Kept so a slow or unreachable forecast
+    service never holds up the page: the last good forecast is shown instead."""
+    station = models.OneToOneField(Station, on_delete=models.CASCADE, primary_key=True, related_name='forecast')
+    fetched_at = models.DateTimeField(null=True, blank=True, help_text='When `days` was last fetched successfully.')
+    attempted_at = models.DateTimeField(null=True, blank=True)
+    error = models.CharField(max_length=200, blank=True)
+    days = models.JSONField(default=list, blank=True,
+                            help_text='[{date, code, high_c, low_c, rain_pct, rain_mm}, …], SI units.')
+
+    def __str__(self):
+        return f'Forecast for {self.station}'
