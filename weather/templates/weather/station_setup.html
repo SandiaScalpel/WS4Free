@@ -95,6 +95,56 @@
   </section>
   {% endif %}
 
+  <section id="gateways" class="card mt-6 p-6">
+    <h2 class="text-base font-semibold">Sensor gateways</h2>
+    <p class="mt-1 max-w-prose text-sm text-muted">
+      A second device that adds <strong>extra sensors</strong> to this station: an Ecowitt gateway (GW1100, GW2000…) with
+      a soil moisture probe, say. Only its extra sensors are kept. Everything else it sends, its own indoor readings
+      and any outdoor sensors it happens to pick up, is ignored, so it never changes this station's main readings or rain.
+    </p>
+    {% for item in gateways %}{% with g=item.g %}
+    <div class="mt-5 rounded-xl border border-line" x-data="{ copied: '' }">
+      <div class="flex flex-wrap items-start justify-between gap-3 border-b border-line px-4 py-3">
+        <div>
+          <p class="font-medium">{{ g.name }}</p>
+          <p class="mt-0.5 text-xs text-faint">
+            {% if g.last_upload_at %}Last upload {{ g.last_upload_at|timesince }} ago{% else %}No uploads yet{% endif %}
+            {% if item.sensors %} · sending: {{ item.sensors|join:", " }}{% elif g.last_upload_at %} · <span class="text-warn">no extra sensors in its uploads</span>{% endif %}
+          </p>
+        </div>
+        <div class="flex gap-2">
+          <form method="post" action="{% url 'weather:station-gateway-rotate' station.slug g.pk %}" onsubmit="return confirm('The gateway will stop uploading until you enter the new path. Continue?')">
+            {% csrf_token %}<button class="btn btn-secondary btn-sm">New path</button></form>
+          <form method="post" action="{% url 'weather:station-gateway-delete' station.slug g.pk %}" onsubmit="return confirm('Remove {{ g.name|escapejs }}? Readings it already sent are kept.')">
+            {% csrf_token %}<button class="btn btn-ghost btn-sm">Remove</button></form>
+        </div>
+      </div>
+      <p class="px-4 pt-3 text-sm text-muted">In the gateway's web page or WS View Plus: <strong>Weather Services → Customized</strong> → enable, then enter:</p>
+      <dl class="divide-y divide-line text-sm">
+        <div class="grid gap-1 px-4 py-2.5 sm:grid-cols-[10rem_1fr]"><dt class="text-muted">Protocol type</dt><dd>Ecowitt</dd></div>
+        <div class="grid gap-1 px-4 py-2.5 sm:grid-cols-[10rem_1fr]"><dt class="text-muted">Server / hostname</dt><dd><code>{{ host }}</code></dd></div>
+        <div class="grid gap-1 px-4 py-2.5 sm:grid-cols-[10rem_1fr]">
+          <dt class="text-muted">Path</dt>
+          <dd class="flex flex-wrap items-center gap-2"><code class="break-all">{{ item.ecowitt_path }}</code>
+            <button type="button" class="btn btn-ghost btn-sm" @click="navigator.clipboard.writeText('{{ item.ecowitt_path }}'); copied = 'e'; setTimeout(() => copied = '', 1500)" x-text="copied === 'e' ? 'Copied' : 'Copy'"></button></dd>
+        </div>
+        <div class="grid gap-1 px-4 py-2.5 sm:grid-cols-[10rem_1fr]"><dt class="text-muted">Port</dt><dd><code>80</code> <span class="text-muted">— plain HTTP</span></dd></div>
+        <div class="grid gap-1 px-4 py-2.5 sm:grid-cols-[10rem_1fr]"><dt class="text-muted">Upload interval</dt><dd>60 seconds is plenty <span class="text-muted">(soil changes slowly)</span></dd></div>
+      </dl>
+      <p class="px-4 pb-3 text-xs text-faint">A gateway using the Ambient Weather protocol instead: path <code class="break-all">{{ item.ambient_path }}</code>.
+        The path is this gateway's secret; anyone who has it can add sensor readings to this station.</p>
+    </div>
+    {% endwith %}{% endfor %}
+    <form method="post" action="{% url 'weather:station-gateway-add' station.slug %}" class="mt-5 flex flex-wrap items-end gap-3">
+      {% csrf_token %}
+      <div class="min-w-0 flex-1 sm:max-w-xs">
+        <label for="gateway-name">{% if gateways %}Add another gateway{% else %}Add a gateway{% endif %}</label>
+        <input id="gateway-name" name="name" type="text" maxlength="60" placeholder="e.g. Soil gateway" class="w-full">
+      </div>
+      <button type="submit" class="btn btn-secondary">Add gateway</button>
+    </form>
+  </section>
+
   <section class="card mt-6 p-6">
     <div class="flex items-center justify-between gap-4">
       <h2 class="text-base font-semibold">Recent upload log</h2>

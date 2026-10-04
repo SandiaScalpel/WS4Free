@@ -580,3 +580,30 @@ class NeighbourReading(models.Model):
     class Meta:
         constraints = [models.UniqueConstraint(fields=['neighbour', 'timestamp'], name='uniq_neighbour_reading')]
         indexes = [models.Index(fields=['timestamp'])]
+
+
+class SensorGateway(models.Model):
+    """A second device that uploads to a station only for its extra sensors: an
+    Ecowitt GW1100 with a soil moisture probe, say, beside an Ambient console.
+    It has its own upload path; everything it sends except extra sensors (its own
+    indoor readings, and any outdoor array it happens to hear) is dropped, so it
+    can never change the station's main readings or rain."""
+    station = models.ForeignKey(Station, on_delete=models.CASCADE, related_name='gateways')
+    name = models.CharField(max_length=60, default='Sensor gateway')
+    push_token = models.CharField(max_length=64, unique=True, default=_new_push_token, editable=False)
+    push_passkey = models.CharField(max_length=64, blank=True, help_text='Learned from its first upload.')
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_upload_at = models.DateTimeField(null=True, blank=True)
+    latest_extra = models.JSONField(default=dict, blank=True, help_text='The extra sensors in its newest upload (raw).')
+    latest_at = models.DateTimeField(null=True, blank=True, help_text='When its newest upload was taken.')
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f'{self.name} ({self.station})'
+
+    def rotate_push_token(self):
+        self.push_token = _new_push_token()
+        self.push_passkey = ''
+        self.save(update_fields=['push_token', 'push_passkey'])

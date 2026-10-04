@@ -30,7 +30,8 @@ good doing it, in light and dark.
   evapotranspiration against rainfall.
 - **Extra sensors:** extra temperature channels, soil, leaf wetness, air
   quality, CO₂, lightning and leak detectors, each named and public or private;
-  piezo and tipping-bucket rain gauges; low-battery warnings.
+  piezo and tipping-bucket rain gauges; low-battery warnings; a second device
+  (such as an Ecowitt gateway with a soil probe) can add its sensors to a station.
 - **Data quality:** exclude a failing sensor's readings without losing them, or
   calibrate a sensor that reads too warm in the sun, fitted against a nearby
   airport station.

@@ -16,11 +16,13 @@ from . import agro, almanac, charts, dashboard, reports
 from . import forecast as forecasts
 from . import neighbours as neighbour_data
 from . import calibration, quality
+from . import sensors as sensor_catalog
 from . import compare as compare_data
 from . import help as help_docs
 from .forms import CalibrationForm, ExclusionForm, StationCreateForm, SiteSettingsForm, StationEventForm, StationSettingsForm
 from .ingest.store import mark_dirty
-from .models import DailyRollup, DataExclusion, Neighbour, Observation, SiteSettings, Station, StationEvent, TempCalibration
+from .models import (DailyRollup, DataExclusion, Neighbour, Observation, SensorGateway, SiteSettings, Station,
+                     StationEvent, TempCalibration)
 from .units import SYSTEMS, UNITS_COOKIE, prefs_for_request
 
 
@@ -221,8 +223,43 @@ def station_setup(request, slug):
         'span': span,
         'latest': getattr(station, 'latest', None),
         'captures': station.captures.all()[:15],
+        'gateways': [{
+            'g': g, 'ambient_path': f'/ingest/ambient/{g.push_token}/', 'ecowitt_path': f'/ingest/ecowitt/{g.push_token}/',
+            'sensors': [(station.sensors.get(k) or {}).get('name') or sensor_catalog.describe(k).default_label
+                        for k in sensor_catalog.sensor_keys(g.latest_extra)],
+        } for g in station.gateways.all()],
         'tab': 'console',
     })
+
+
+@login_required
+@require_POST
+def station_gateway_add(request, slug):
+    station = _owned_station(request, slug)
+    name = (request.POST.get('name') or '').strip()[:60] or 'Sensor gateway'
+    SensorGateway.objects.create(station=station, name=name)
+    messages.success(request, f'{name} added. Enter its upload settings below in the gateway.')
+    return redirect(reverse('weather:station-setup', args=[station.slug]) + '#gateways')
+
+
+@login_required
+@require_POST
+def station_gateway_rotate(request, slug, pk):
+    station = _owned_station(request, slug)
+    gateway = get_object_or_404(SensorGateway, pk=pk, station=station)
+    gateway.rotate_push_token()
+    messages.warning(request, f'New upload path for {gateway.name}. Enter it in the gateway; the old one no longer works.')
+    return redirect(reverse('weather:station-setup', args=[station.slug]) + '#gateways')
+
+
+@login_required
+@require_POST
+def station_gateway_delete(request, slug, pk):
+    station = _owned_station(request, slug)
+    gateway = get_object_or_404(SensorGateway, pk=pk, station=station)
+    gateway.delete()
+    messages.success(request, f'{gateway.name} removed. Readings it already sent are kept.')
+    return redirect(reverse('weather:station-setup', args=[station.slug]) + '#gateways')
 
 
 @login_required

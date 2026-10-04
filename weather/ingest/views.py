@@ -21,9 +21,9 @@ from django.views.decorators.http import require_http_methods
 
 from accounts.ratelimit import client_ip
 
-from ..models import IngestCapture, Observation, Station
+from ..models import IngestCapture, Observation, SensorGateway, Station
 from .parsers import ParseError, parse_ambient_push, parse_ecowitt_push
-from .store import record_push
+from .store import record_gateway, record_push
 
 log = logging.getLogger(__name__)
 
@@ -41,9 +41,9 @@ def _params(request, rest):
     return {key.lstrip('?&'): value for key, value in params.items()}
 
 
-def _capture(station, request, protocol, params, accepted, note=''):
+def _capture(station, request, protocol, params, accepted, note='', token=None):
     payload = urlencode(params)
-    path = request.path.replace(station.push_token, '<token>') if station else request.path
+    path = request.path.replace(token or station.push_token, '<token>') if station else request.path
     IngestCapture.objects.create(
         station=station, protocol=protocol, method=request.method, remote_addr=client_ip(request)[:45],
         path=path[:500], payload=payload, accepted=accepted, note=note[:255],
@@ -52,9 +52,16 @@ def _capture(station, request, protocol, params, accepted, note=''):
 
 def _ingest(request, token, rest, protocol, parser, source):
     station = Station.objects.filter(push_token=token).first()
+    gateway = None
+    if station is None:
+        # A sensor gateway's upload path: only its extra sensors are kept.
+        gateway = SensorGateway.objects.select_related('station').filter(push_token=token).first()
+        station = gateway.station if gateway else None
     if station is None:
         # No capture: unknown tokens are scanners, and logging them would let anyone fill the table.
         return HttpResponseNotFound('unknown station\n', content_type='text/plain')
+    if gateway is not None:
+        return _ingest_gateway(request, gateway, rest, protocol, parser, source)
 
     params = _params(request, rest)
     max_skew = getattr(settings, 'INGEST_MAX_CLOCK_SKEW_S', 900)
@@ -83,6 +90,40 @@ def _ingest(request, token, rest, protocol, parser, source):
     record_push(station, reading, source)
     if getattr(settings, 'INGEST_CAPTURE', False) or note:
         _capture(station, request, protocol, params, True, note)
+    return HttpResponse('success\n', content_type='text/plain')
+
+
+def _ingest_gateway(request, gateway, rest, protocol, parser, source):
+    """A sensor gateway's upload: same checks as a console's, its own learned
+    PASSKEY, and only extra sensors stored (weather.ingest.store.record_gateway)."""
+    station = gateway.station
+    params = _params(request, rest)
+    max_skew = getattr(settings, 'INGEST_MAX_CLOCK_SKEW_S', 900)
+
+    def capture(accepted, note=''):
+        _capture(station, request, f'{protocol} gateway', params, accepted,
+                 f'{gateway.name}: {note}' if note else gateway.name, token=gateway.push_token)
+
+    try:
+        reading = parser(params, timezone.now(), max_skew, rain_gauge=station.rain_gauge)
+    except ParseError as exc:
+        capture(False, f'parse error: {exc}')
+        return HttpResponseBadRequest(f'{exc}\n', content_type='text/plain')
+    note = ''
+    if reading.passkey:
+        passkey = reading.passkey.upper()
+        if gateway.push_passkey and passkey != gateway.push_passkey:
+            log.warning('Rejected %s upload for gateway %s: PASSKEY does not match the learned one', protocol, gateway)
+            capture(False, 'PASSKEY does not match this gateway')
+            return HttpResponseForbidden('passkey mismatch\n', content_type='text/plain')
+        if not gateway.push_passkey:
+            SensorGateway.objects.filter(pk=gateway.pk, push_passkey='').update(push_passkey=passkey)
+            note = 'learned PASSKEY'
+    kept = record_gateway(gateway, reading, source)
+    if not kept:
+        note = (note + '; ' if note else '') + 'no extra sensors in this upload'
+    if getattr(settings, 'INGEST_CAPTURE', False) or note:
+        capture(True, note)
     return HttpResponse('success\n', content_type='text/plain')
 
 

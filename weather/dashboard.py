@@ -8,6 +8,7 @@ the console. Values stay SI here; templates and the chart JSON convert to the
 viewer's units.
 """
 import datetime as dt
+from types import SimpleNamespace
 
 from django.db.models import Sum
 from django.utils import timezone
@@ -18,9 +19,11 @@ from . import sensors as sensor_catalog
 from . import units as u
 from .models import DailyRollup, LatestReading, Observation
 from .calibration import correct_live
+from .ingest.store import console_source
 from .quality import excluded_fields_at
 
 STALE_AFTER = dt.timedelta(minutes=10)
+GATEWAY_FRESH = dt.timedelta(minutes=15)
 SPARK_HOURS = 24
 RAIN_DAYS = 14
 
@@ -81,6 +84,16 @@ def _live(station, latest):
     return corrected, excluded, corrected is not data
 
 
+def _sensors_now(station, latest, now):
+    """The latest extra-sensor values: the console's, plus any sensor gateway's
+    that has reported recently (gateways upload extra sensors only)."""
+    extra = dict(latest.extra) if latest else {}
+    for gateway in station.gateways.filter(latest_at__gte=now - GATEWAY_FRESH):
+        extra.update(gateway.latest_extra)
+    return SimpleNamespace(extra=extra, timestamp=latest.timestamp if latest else now,
+                           source=latest.source if latest else console_source(station))
+
+
 def _neighbours(station, data, now):
     """Owner's line on the temperature card: the neighbours' average now, and the difference."""
     live = neighbour_data.live(station, now)
@@ -103,6 +116,7 @@ def build(station, prefs, viewer=None, now=None):
     latest = LatestReading.objects.filter(station=station).first()
     data, excluded, calibrated = _live(station, latest)
     rollup = DailyRollup.objects.filter(station=station, date=today).first()
+    sensors_now = _sensors_now(station, latest, now)
 
     month_start = today.replace(day=1)
     year_start = today.replace(month=1, day=1)
@@ -146,10 +160,10 @@ def build(station, prefs, viewer=None, now=None):
         'uv': u.uv_category(data.get('uv_index')),
         'wind_compass': u.compass(data.get('wind_dir_deg')),
         'forecast': forecasts.display(forecasts.current(station, now=now), prefs, today),
-        'sensor_groups': sensor_catalog.dashboard_groups(station, latest, rollup.extra if rollup else {}, prefs,
+        'sensor_groups': sensor_catalog.dashboard_groups(station, sensors_now, rollup.extra if rollup else {}, prefs,
                                                          exclude={f[2:] for f in excluded if f.startswith('x:')},
-                                                         include_private=can_see_private),
-        'low_batteries': sensor_catalog.low_batteries(latest.extra, latest.source) if latest and can_see_private else [],
+                                                         include_private=can_see_private, batteries=can_see_private),
+        'low_batteries': sensor_catalog.low_batteries(sensors_now.extra, sensors_now.source) if can_see_private else [],
         'neighbours': _neighbours(station, data, now) if can_see_private else None,
         'show_indoor': can_see_private and (data.get('temp_in_c') is not None or data.get('humidity_in') is not None),
         'can_manage': can_see_private,

@@ -17,8 +17,9 @@ import math
 
 from django.db import IntegrityError, transaction
 from django.db.models import Q
+from django.utils import timezone
 
-from ..models import OBSERVATION_FIELDS, LatestReading, Observation, Station
+from ..models import OBSERVATION_FIELDS, LatestReading, Observation, SensorGateway, Station
 from .rain import compute_rain_increments
 
 log = logging.getLogger(__name__)
@@ -99,6 +100,47 @@ def record_push(station, reading, source):
     return obs
 
 
+def console_source(station):
+    """The push source a station's own console uploads as."""
+    return Observation.SOURCE_ECOWITT_PUSH if station.source == Station.SOURCE_ECOWITT else Observation.SOURCE_AMBIENT_PUSH
+
+
+def record_gateway(gateway, reading, source):
+    """Merge a sensor gateway's upload into its station: extra sensors only.
+
+    Lands in the same archive bucket as the console's readings. If the console
+    hasn't written that bucket yet, the row is created with no main readings and
+    sample_count 0, which the rollups don't count as coverage; the console's
+    push (or an API gap-fill) then fills it in. Returns the kept extra dict."""
+    from ..sensors import detect, gateway_extra
+    station = gateway.station
+    kept = gateway_extra(reading.extra, source, station.source)
+    SensorGateway.objects.filter(pk=gateway.pk).update(last_upload_at=timezone.now())
+    if not kept:
+        return kept
+    bucket = interval_end(reading.timestamp, station.archive_interval_s)
+    with transaction.atomic():
+        obs = Observation.objects.select_for_update().filter(station=station, timestamp=bucket).first()
+        if obs is None:
+            try:
+                with transaction.atomic():
+                    Observation.objects.create(station=station, timestamp=bucket, interval_s=station.archive_interval_s,
+                                               source=console_source(station), extra=dict(kept), sample_count=0)
+                obs = None
+            except IntegrityError:
+                obs = Observation.objects.select_for_update().get(station=station, timestamp=bucket)
+        if obs is not None:
+            obs.extra = {**obs.extra, **kept}
+            obs.save(update_fields=['extra'])
+    SensorGateway.objects.filter(pk=gateway.pk).filter(Q(latest_at__isnull=True) | Q(latest_at__lte=reading.timestamp)).update(
+        latest_extra=kept, latest_at=reading.timestamp)
+    from ..quality import apply_to_new_rows
+    apply_to_new_rows(station, bucket - dt.timedelta(seconds=1), bucket)
+    mark_dirty(station.pk, bucket)
+    detect(station, kept)
+    return kept
+
+
 def record_archive(station, readings, source, batch_size=500):
     """Insert archive records (API poll/backfill) into empty buckets only.
 
@@ -113,10 +155,24 @@ def record_archive(station, readings, source, batch_size=500):
     for reading in readings:
         by_bucket.setdefault(interval_end(reading.timestamp, interval), reading)
     start, end = min(by_bucket), max(by_bucket)
-    existing = set(
-        Observation.objects.filter(station=station, timestamp__range=(start, end))
-        .values_list('timestamp', flat=True)
-    )
+    existing = set()
+    gateway_only = {}           # rows a sensor gateway created before any main reading arrived
+    for row in Observation.objects.filter(station=station, timestamp__range=(start, end)).values('pk', 'timestamp', 'sample_count'):
+        if row['sample_count'] == 0:
+            gateway_only[row['timestamp']] = row['pk']
+        existing.add(row['timestamp'])
+    filled = []
+    for bucket, pk in sorted(gateway_only.items()):
+        reading = by_bucket.get(bucket)
+        if reading is None:
+            continue
+        obs = Observation.objects.get(pk=pk)
+        for column, value in reading.values.items():
+            setattr(obs, column, value)
+        obs.extra = {**reading.extra, **obs.extra}
+        obs.sample_count, obs.source = 1, source
+        obs.save()
+        filled.append(obs)
     new_rows = [
         Observation(station=station, timestamp=bucket, interval_s=interval, source=source,
                     extra=dict(reading.extra), **reading.values)
@@ -133,14 +189,15 @@ def record_archive(station, readings, source, batch_size=500):
         seen.update(reading.extra)
     if seen:
         detect(station, seen)
-    if new_rows:
+    written = sorted([r.timestamp for r in new_rows] + [r.timestamp for r in filled])
+    if written:
         from ..calibration import apply_to_new_rows as calibrate_new_rows
         from ..quality import apply_to_new_rows
-        apply_to_new_rows(station, new_rows[0].timestamp - dt.timedelta(seconds=1), new_rows[-1].timestamp)
-        calibrate_new_rows(station, new_rows[0].timestamp - dt.timedelta(seconds=1), new_rows[-1].timestamp)
-        mark_dirty(station.pk, new_rows[0].timestamp)
-    return len(new_rows)
+        apply_to_new_rows(station, written[0] - dt.timedelta(seconds=1), written[-1])
+        calibrate_new_rows(station, written[0] - dt.timedelta(seconds=1), written[-1])
+        mark_dirty(station.pk, written[0])
+    return len(written)
 
 
-__all__ = ['OBSERVATION_FIELDS', 'PEAK_FIELDS', 'interval_end', 'mark_dirty',
-           'record_archive', 'record_push', 'update_latest']
+__all__ = ['OBSERVATION_FIELDS', 'PEAK_FIELDS', 'console_source', 'interval_end', 'mark_dirty',
+           'record_archive', 'record_gateway', 'record_push', 'update_latest']

@@ -9,6 +9,19 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Added
+
+- **Sensor gateways** (Manage → Console & uploads → Sensor gateways): a second
+  device, such as an Ecowitt GW1100 with a soil moisture probe, can add its
+  extra sensors to a station whose console doesn't support them. It gets its
+  own upload path; only its extra sensors and their batteries are kept, so its
+  own indoor readings and any outdoor array it picks up never change the
+  station's main readings or rain. Its sensors appear on the dashboard and in
+  charts, the almanac and reports like the console's own.
+- The station's owner sees the **battery voltage** under sensors that report one
+  (Ecowitt soil moisture, probe and leaf wetness sensors) on the dashboard: green
+  while it's fine, red below 1.2 V.
+
 ### Changed
 
 - **Stations** in the header is now a drop-down list of the stations you can
@@ -18,6 +31,12 @@ and versions follow [Semantic Versioning](https://semver.org/).
   with only one station.
 - On a station page, the button beside the station's name that opens another
   station on the same tab is now called **Switch station**.
+- Soil-probe, leaf-wetness, probe and air-quality battery warnings now work on
+  any station, not only Ecowitt ones.
+
+### Upgrading
+
+- Run `migrate`.
 
 ## 1.1.0 — 2026-10-04
 

@@ -66,8 +66,10 @@ def _aggregates():
     # Every alias starts with '_': an alias equal to an Observation column (rain_mm,
     # solar_max_wm2…) shadows that column for the other expressions in the query.
     aggs = {
-        '_sample_count': Count('id'),
-        '_covered_s': Sum('interval_s'),
+        # Rows a sensor gateway created with no main readings (sample_count 0) hold
+        # extra sensors only: they don't make an outage look covered.
+        '_sample_count': Count('id', filter=Q(sample_count__gt=0)),
+        '_covered_s': Sum('interval_s', filter=Q(sample_count__gt=0)),
         '_rain_sum': Sum('rain_mm'),
         '_rain_den': Sum('interval_s', filter=Q(rain_mm__isnull=False)),
         '_rain_rate_max_mmh': Max('rain_rate_mmh'),

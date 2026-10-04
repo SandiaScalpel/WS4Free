@@ -23,6 +23,32 @@ Sensors appear by themselves as soon as the console reports them. The first
 time a new kind of sensor appears, WS4Free summarises the whole history for it
 in the background, so charts of earlier periods fill in a few minutes later.
 
+## Sensors on a second device (sensor gateways)
+
+Your console doesn't have to be the only source. An Ecowitt gateway (GW1100,
+GW2000…) can carry sensors your console doesn't support, such as a WH51 soil
+moisture probe beside an Ambient Weather console. Add it to the station as a
+**sensor gateway**:
+
+1. **Manage → Console & uploads → Sensor gateways → Add a gateway.** Give it a
+   name, such as "Soil gateway".
+2. Enter the settings shown there in the gateway's web page or WS View Plus,
+   under **Weather Services → Customized**: Ecowitt protocol, your server, the
+   gateway's own path and port 80. The gateway only needs internet access, not
+   access to your home network.
+
+Only the gateway's **extra sensors** (and their batteries) are kept. Everything
+else it sends is ignored: its own indoor temperature, humidity and pressure, and
+any outdoor sensor array it happens to hear (a gateway adopts the first sensors
+of each kind it receives, which may be your console's array or a neighbour's).
+So it never changes your station's main readings or its rain. Its sensors then
+appear like your console's own: on the dashboard, in charts, the almanac and
+reports, named and public or private under **Settings → Extra sensors**.
+
+Each gateway has its own upload path and learns its own PASSKEY, like a console.
+**New path** replaces a path that has leaked; **Remove** stops accepting its
+uploads and keeps the readings it already sent.
+
 ## Naming them and choosing who sees them
 
 Under **Manage → Settings → Extra sensors**, each sensor has a name (for
@@ -79,3 +105,9 @@ The owner sees a **Low battery** warning on the dashboard, and on the Charts
 tab the periods when any sensor reported a low battery are shaded, with the
 sensor named in the tooltip, so gaps or odd readings at those times are easy to
 explain. Visitors don't see either.
+
+Sensors that report their battery in volts (Ecowitt soil moisture, probe and
+leaf wetness sensors, which run on one AA cell) also show the voltage under
+their reading on the owner's dashboard: green while it's fine, red with
+"replace" below 1.2 V. Watching it fall over the months tells you when a
+battery change is coming.

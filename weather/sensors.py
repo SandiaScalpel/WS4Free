@@ -294,6 +294,26 @@ BATTERY_NAMES = {
 }
 
 
+LOW_VOLTS = 1.2         # an Ecowitt AA-cell sensor below this needs a new battery
+
+# Sensors whose battery is reported in volts (Ecowitt), and that battery's key.
+_VOLT_BATTERIES = [(re.compile(r'^soilmoisture(\d+)$'), 'soilbatt{}'), (re.compile(r'^tf_ch(\d+)c?$'), 'tf_batt{}'),
+                   (re.compile(r'^leafwetness_ch(\d+)$'), 'leaf_batt{}')]
+
+
+def battery_volts(key, extra):
+    """The battery voltage reported for sensor `key`, or None if it has none."""
+    for pattern, battery in _VOLT_BATTERIES:
+        m = pattern.match(key)
+        if m:
+            try:
+                volts = float((extra or {}).get(battery.format(m.group(1))))
+            except (TypeError, ValueError):
+                return None
+            return volts if volts > 0 else None
+    return None
+
+
 def low_batteries(extra, source):
     """Names of sensors whose battery the console reports as low. The same key can
     mean opposite things per brand (Ambient batt1 = 1 is OK, Ecowitt batt1 = 1 is
@@ -310,14 +330,45 @@ def low_batteries(extra, source):
             is_low = key.endswith('BatteryStatus') and value == 1
         elif ecowitt:
             is_low = ((_ECOWITT_LOW_IS_1.match(key) and value == 1)
-                      or (_ECOWITT_VOLTS.match(key) and 0 < value < 1.2)
+                      or (_ECOWITT_VOLTS.match(key) and 0 < value < LOW_VOLTS)
                       or (_ECOWITT_LEVEL.match(key) and value <= 1))
         else:
+            # Ecowitt's voltage and level keys exist under no other brand's name, so
+            # they mean the same whatever the row's source (e.g. a sensor gateway's).
             is_low = ((_AMBIENT_OK_IS_1.match(key) and value == 0)
-                      or (_AMBIENT_LOW_IS_1.match(key) and value == 1))
+                      or (_AMBIENT_LOW_IS_1.match(key) and value == 1)
+                      or (_ECOWITT_VOLTS.match(key) and 0 < value < LOW_VOLTS)
+                      or (_ECOWITT_LEVEL.match(key) and value <= 1))
         if is_low:
             low.append(BATTERY_NAMES.get(key) or WEEWX_BATTERY_NAMES.get(key) or _battery_label(key))
     return sorted(set(low))
+
+
+# ── Sensor gateways ──────────────────────────────────────────────────────────
+
+# Batteries of extra sensors (not of the main outdoor array, rain gauge, wind
+# sensor or the gateway itself), in either brand's naming.
+_EXTRA_BATTERIES = re.compile(r'^(batt\d+|battsm\d+|batleak\d+|batt_co2|batt_25|batt_lightning|soilbatt\d+|tf_batt\d+|'
+                              r'leaf_batt\d+|pm25batt\d+|leakbatt\d+|co2_batt|wh57batt|ldsbatt\d+)$')
+_CHANNEL_BATTERY = re.compile(r'^batt\d+$')
+COMPANION_KEYS = set(PM25_24H.values()) | {'lightning', 'lightning_time', 'lightning_distance', 'lightning_mi'}
+
+
+def gateway_extra(extra, upload_source, station_source):
+    """What a sensor gateway's upload may add to its station: extra sensors, their
+    batteries and companion values only. Channel batteries (batt1…) mean opposite
+    things per brand (Ambient 1 = OK, Ecowitt 1 = low); they're rewritten to the
+    station's own console's meaning, so its rows read them the same way."""
+    kept = {k: v for k, v in (extra or {}).items()
+            if v not in (None, '') and (describe(k) is not None or _EXTRA_BATTERIES.match(k) or k in COMPANION_KEYS)}
+    if (upload_source == 'ecowitt_push') != (station_source == 'ecowitt'):
+        for key, value in kept.items():
+            if _CHANNEL_BATTERY.match(key):
+                try:
+                    kept[key] = 1 - int(float(value))
+                except (TypeError, ValueError):
+                    pass
+    return kept
 
 
 WEEWX_BATTERY_NAMES = {'outTempBatteryStatus': 'Outdoor sensor', 'inTempBatteryStatus': 'Indoor sensor',
@@ -363,9 +414,10 @@ def summarise(rows, sensor_keys_):
 
 # ── Dashboard ────────────────────────────────────────────────────────────────
 
-def dashboard_groups(station, latest, today_extra, prefs, include_private=False, exclude=()):
+def dashboard_groups(station, latest, today_extra, prefs, include_private=False, exclude=(), batteries=False):
     """Live tiles for the dashboard's "More sensors" section, grouped by kind:
-    [{'label', 'items': [{'name', 'value', 'detail', 'tone', 'private'}]}]."""
+    [{'label', 'items': [{'name', 'value', 'detail', 'tone', 'private', 'battery'}]}].
+    `batteries` adds each sensor's battery voltage where it reports one (owner only)."""
     extra = {k: v for k, v in ((latest.extra if latest else None) or {}).items() if k not in exclude}
     groups = {}
     for sensor, name in station_sensors(station, include_private):
@@ -374,7 +426,10 @@ def dashboard_groups(station, latest, today_extra, prefs, include_private=False,
         if si is None and sensor.kind != 'lightning':
             continue
         item = {'name': name, 'value': format_value(sensor, si, prefs), 'detail': '', 'tone': '',
-                'private': not (station.sensors.get(sensor.key) or {}).get('public')}
+                'private': not (station.sensors.get(sensor.key) or {}).get('public'), 'battery': None}
+        volts = battery_volts(sensor.key, extra) if batteries else None
+        if volts is not None:
+            item['battery'] = {'volts': volts, 'low': volts < LOW_VOLTS}
         day = (today_extra or {}).get(sensor.key)
         if sensor.kind in ('temperature', 'soil_temp', 'humidity', 'soil_moisture', 'soil_tension') and day:
             lo, hi = min(day[1], si), max(day[2], si)

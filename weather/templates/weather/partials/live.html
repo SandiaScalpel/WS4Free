@@ -205,6 +205,7 @@
       <p class="truncate text-sm text-muted">{{ item.name }}</p>
       <p class="mt-0.5 text-xl font-semibold tracking-tight sm:text-2xl {% if item.tone == 'bad' %}text-bad{% endif %}">{{ item.value }}</p>
       {% if item.detail %}<p class="mt-0.5 text-xs {% if item.tone == 'good' %}text-good{% elif item.tone == 'warn' %}text-warn{% elif item.tone == 'warm' %}text-warm{% elif item.tone == 'bad' %}text-bad{% else %}text-faint{% endif %}">{{ item.detail }}</p>{% endif %}
+      {% if item.battery %}<p class="mt-0.5 text-xs {% if item.battery.low %}text-bad{% else %}text-good{% endif %}" title="Only you see this. Below 1.2 V the battery needs replacing">Battery {{ item.battery.volts|floatformat:2 }} V{% if item.battery.low %} · replace{% endif %}</p>{% endif %}
     </li>
     {% endfor %}{% endfor %}
   </ul>
