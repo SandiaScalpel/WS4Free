@@ -14,7 +14,7 @@ import math
 from django.db.models import Case, F, FloatField, IntegerField, Min, Sum, When
 from django.db.models.functions import Floor, Mod
 
-from .models import DailyRollup, HourlyRollup, Observation
+from .models import DailyRollup, HourlyRollup, Observation, StationEvent
 from .sensors import station_sensors
 from .units import HEAT_INDEX, WIND_CHILL, apparent
 
@@ -326,3 +326,12 @@ def year_over_year(station, metric, prefs, smooth_days=7):
                     values[i] = _r(prefs.t(sum(window) / len(window)), prefs.digits['temp'])
         series.append({'year': year, 'values': values})
     return {'metric': metric, 'series': series}
+
+
+def events(station, start, end, include_private=False):
+    """Station log entries in (start, end] as chart markers."""
+    qs = StationEvent.objects.filter(station=station, occurred_at__gte=start, occurred_at__lte=end)
+    if not include_private:
+        qs = qs.filter(is_public=True)
+    return [{'t': int(e.occurred_at.timestamp() * 1000), 'has_time': e.has_time, 'kind': e.get_kind_display(),
+             'title': e.title, 'notes': e.notes[:300]} for e in qs.order_by('occurred_at')]

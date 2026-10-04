@@ -70,7 +70,29 @@
     return v == null ? '—' : Number(v).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
   }
 
-  window.WS4FreeCharts = { CATEGORICAL, ROSE };
+  // Multi-line tooltips. While the pointer is on a line (the chart highlights that series),
+  // the tooltip shows only that line's point; otherwise every line, highest value first.
+  // Lines need `triggerLineEvent: true` so the thin stroke itself reports hovering.
+  function trackFocus(chart) {
+    if (chart.__ws4fFocus) return chart.__ws4fFocus;
+    const state = { name: null, xy: null };
+    const refresh = () => { if (state.xy) chart.dispatchAction({ type: 'showTip', x: state.xy[0], y: state.xy[1] }); };
+    chart.getZr().on('mousemove', (e) => { state.xy = [e.offsetX, e.offsetY]; });
+    chart.on('mouseover', { seriesType: 'line' }, (e) => { state.name = e.seriesName; refresh(); });
+    chart.on('mouseout', { seriesType: 'line' }, () => { state.name = null; refresh(); });
+    chart.on('globalout', () => { state.name = null; });
+    chart.__ws4fFocus = state;
+    return state;
+  }
+
+  function focusedOrRanked(ps, focus) {
+    const shown = ps.filter((p) => p.value != null && (Array.isArray(p.value) ? p.value[1] != null : true));
+    const val = (p) => (Array.isArray(p.value) ? p.value[1] : p.value);
+    const one = focus.name && shown.filter((p) => p.seriesName === focus.name);
+    return one && one.length ? one : shown.sort((a, b) => val(b) - val(a));
+  }
+
+  window.WS4FreeCharts = { CATEGORICAL, ROSE, trackFocus, focusedOrRanked };
 
   document.addEventListener('alpine:init', () => {
     Alpine.data('chartsPage', (config) => ({
@@ -202,6 +224,28 @@
         const keys = this.historyCharts.map((x) => x.key);
         const self = this;
         const axisDigits = { rain: d.rain, pressure: u.pressure === 'inhg' ? 2 : 0 };
+        // Station log entries: a dashed marker on every chart (labelled on the first), and listed in
+        // the tooltip of the bucket they fall in.
+        const events = h.events || [];
+        const step = { raw: 300000, hourly: 3600000, daily: 86400000 }[res];
+        const evWhen = new Intl.DateTimeFormat(undefined, { timeZone: tz, month: 'short', day: 'numeric', year: 'numeric' });
+        const evTime = new Intl.DateTimeFormat(undefined, { timeZone: tz, hour: 'numeric', minute: '2-digit' });
+        const esc = (x) => String(x).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+        const eventSeries = (key) => (events.length ? [{
+          name: '_events', type: 'line', data: [], silent: true,
+          markLine: {
+            silent: true, symbol: 'none', animation: false,
+            lineStyle: { color: c.muted, width: 1, type: [4, 3] },
+            label: { show: key === keys[0], position: 'insideEndTop', color: c.muted, fontSize: 10, formatter: (m) => m.name },
+            data: events.map((e) => ({ xAxis: e.t, name: e.kind })),
+          },
+        }] : []);
+        // Near enough to the hovered bucket: within ~1 % of the visible range, never less than the bucket.
+        const near = Math.max(step, span / 80);
+        const eventRows = (t) => events.filter((e) => Math.abs(e.t - (t + step / 2)) <= near).map((e) =>
+          `<div style="margin-top:4px;padding-top:4px;border-top:1px solid ${c.line};max-width:260px;white-space:normal">` +
+          `<span style="color:${c.muted}">${esc(e.kind)} · ${evWhen.format(new Date(e.t))}${e.has_time ? ' ' + evTime.format(new Date(e.t)) : ''}</span>` +
+          `<br><b>${esc(e.title)}</b></div>`).join('');
 
         const base = (key, series, legend, unitDigits) => ({
           animation: false,
@@ -228,7 +272,7 @@
                 if (p.value[1] == null) return;
                 html += row(p.color, fmt(p.value[1], unitDigits), p.seriesName, p.seriesType === 'bar' ? 8 : 2);
               });
-              return html;
+              return html + eventRows(t);
             },
           }),
           dataZoom: [{ type: 'inside', filterMode: 'none', throttle: 50 }].concat(
@@ -239,7 +283,7 @@
               handleStyle: { color: c.surface, borderColor: c.muted }, moveHandleStyle: { color: c.line },
               textStyle: { color: c.muted, fontSize: 10 }, labelFormatter: (v) => tick.format(new Date(v)),
             }] : []),
-          series,
+          series: series.concat(eventSeries(key)),
         });
 
         const line = (name, key, color, area) => ({
@@ -430,7 +474,8 @@
         const monthStart = (i) => days[i].getUTCDate() === 1 && (!narrow || days[i].getUTCMonth() % 3 === 0);
         const digits = rain ? u.digits.rain : u.digits.temp, unit = rain ? u.labels.rain : u.labels.temp;
         const newest = series.length ? series[series.length - 1].year : null;
-        chartAt(el).setOption({
+        const chart = chartAt(el), focus = trackFocus(chart);
+        chart.setOption({
           animation: false,
           textStyle: { fontFamily: FONT },
           grid: { left: 52, right: 16, top: 34, bottom: 28 },
@@ -447,16 +492,14 @@
             formatter: (ps) => {
               const d = days[ps[0].dataIndex];
               let html = `<div style="color:${c.muted};margin-bottom:2px">${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}</div>`;
-              ps.slice().sort((a, b) => Number(b.seriesName) - Number(a.seriesName)).forEach((p) => {
-                if (p.value != null) html += row(p.color, `${fmt(p.value, digits)} ${unit}`, p.seriesName);
-              });
+              focusedOrRanked(ps, focus).forEach((p) => { html += row(p.color, `${fmt(p.value, digits)} ${unit}`, p.seriesName); });
               return html;
             },
           }),
           series: series.map((s) => {
             const color = pal[(s.year - firstYear) % pal.length];   // a year keeps its colour
             return {
-              name: String(s.year), type: 'line', data: s.values, showSymbol: false, connectNulls: false,
+              name: String(s.year), type: 'line', data: s.values, showSymbol: false, connectNulls: false, triggerLineEvent: true,
               lineStyle: { width: s.year === newest ? 2.5 : 2, color }, itemStyle: { color },
               emphasis: { focus: 'series' }, z: s.year === newest ? 3 : 2,
             };

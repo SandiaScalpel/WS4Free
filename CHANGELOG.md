@@ -7,6 +7,24 @@ each release for anything you need to do beyond the usual steps in the README.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [Semantic Versioning](https://semver.org/).
 
+## 0.8.0 — 2026-10-04
+
+### Added
+
+- **Station log** (Manage → Station log): dated notes about the station (moved,
+  sensor replaced, maintenance, battery, outage…), public or private. Entries
+  are marked on the Charts tab, with the details in the tooltip.
+
+### Changed
+
+- Year-over-year and Compare charts: with the pointer on a line, the tooltip
+  shows only that line's value; elsewhere it lists every line, highest value
+  first, so it reads in the same order as the lines.
+
+### Upgrading
+
+- Run `migrate`.
+
 ## 0.7.0 — 2026-10-02
 
 ### Added

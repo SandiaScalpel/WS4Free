@@ -1,0 +1,67 @@
+{% extends "weather/base_generic.html" %}
+{% load tz %}
+{% block title %}{{ station.name }} log · {{ site.site_title }}{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-4xl">
+  {% include "weather/partials/station_header.html" %}
+  {% timezone station.timezone %}
+
+  <p class="mt-6 max-w-prose text-sm text-muted">
+    Note what happened to the station: it was moved, a sensor was replaced, a battery changed. Each entry is marked on
+    the Charts tab, so anyone reading the history later knows why the readings changed.
+  </p>
+
+  <section class="card mt-6 p-6" aria-labelledby="log-form-title">
+    <h2 id="log-form-title" class="text-base font-semibold">{% if editing %}Edit entry{% else %}Add an entry{% endif %}</h2>
+    <form method="post" action="{% if editing %}{% url 'weather:station-log-edit' station.slug editing.pk %}{% else %}{% url 'weather:station-log' station.slug %}{% endif %}" class="mt-4 space-y-4" novalidate>
+      {% csrf_token %}
+      {% if form.errors %}<div class="alert alert-error" role="alert">Nothing was saved. Please fix the highlighted fields below.</div>{% endif %}
+      <div class="grid gap-4 sm:grid-cols-3 [&_.field+.field]:mt-0">
+        {% include "weather/partials/field.html" with field=form.date %}
+        {% include "weather/partials/field.html" with field=form.time %}
+        {% include "weather/partials/field.html" with field=form.kind %}
+      </div>
+      {% include "weather/partials/field.html" with field=form.title %}
+      {% include "weather/partials/field.html" with field=form.notes %}
+      <div class="flex items-start gap-3">
+        <input type="checkbox" name="{{ form.is_public.html_name }}" id="{{ form.is_public.id_for_label }}" class="mt-0.5" {% if form.is_public.value %}checked{% endif %}>
+        <div>
+          <label for="{{ form.is_public.id_for_label }}" class="mb-0">{{ form.is_public.label }}</label>
+          <span class="form-help">{{ form.is_public.help_text }}</span>
+        </div>
+      </div>
+      <div class="flex justify-end gap-2">
+        {% if editing %}<a href="{% url 'weather:station-log' station.slug %}" class="btn btn-ghost">Cancel</a>{% endif %}
+        <button type="submit" class="btn btn-primary">{% if editing %}Save entry{% else %}Add entry{% endif %}</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="mt-8" aria-labelledby="log-title">
+    <h2 id="log-title" class="text-base font-semibold">Log</h2>
+    {% for e in events %}
+    <article class="card mt-3 p-5">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div class="min-w-0">
+          <p class="text-xs text-faint">{{ e.occurred_at|date:"D M j, Y" }}{% if e.has_time %} · {{ e.occurred_at|date:"g:i A" }}{% endif %}
+            <span class="badge ml-1 bg-surface-2 text-muted">{{ e.get_kind_display }}</span>
+            {% if not e.is_public %}<span class="badge ml-1 bg-surface-2 text-faint" title="Only you can see this">Private</span>{% endif %}</p>
+          <h3 class="mt-1 font-medium">{{ e.title }}</h3>
+          {% if e.notes %}<p class="mt-1 text-sm whitespace-pre-line text-muted">{{ e.notes }}</p>{% endif %}
+        </div>
+        <div class="flex gap-2">
+          <a href="{% url 'weather:station-charts' station.slug %}?start={{ e.occurred_at|date:'Y-m-d' }}&end={{ e.occurred_at|date:'Y-m-d' }}" class="btn btn-ghost btn-sm">Chart</a>
+          <a href="{% url 'weather:station-log' station.slug %}?edit={{ e.pk }}#log-form-title" class="btn btn-secondary btn-sm">Edit</a>
+          <form method="post" action="{% url 'weather:station-log-delete' station.slug e.pk %}" onsubmit="return confirm('Delete this log entry?')">
+            {% csrf_token %}<button class="btn btn-ghost btn-sm">Delete</button>
+          </form>
+        </div>
+      </div>
+    </article>
+    {% empty %}
+    <p class="mt-3 text-sm text-muted">No entries yet.</p>
+    {% endfor %}
+  </section>
+  {% endtimezone %}
+</div>
+{% endblock %}

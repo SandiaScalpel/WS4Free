@@ -16,9 +16,9 @@ from . import agro, almanac, charts, dashboard, reports
 from . import calibration, quality
 from . import compare as compare_data
 from . import help as help_docs
-from .forms import CalibrationForm, ExclusionForm, SiteSettingsForm, StationSettingsForm
+from .forms import CalibrationForm, ExclusionForm, SiteSettingsForm, StationEventForm, StationSettingsForm
 from .ingest.store import mark_dirty
-from .models import DailyRollup, DataExclusion, Observation, SiteSettings, Station, TempCalibration
+from .models import DailyRollup, DataExclusion, Observation, SiteSettings, Station, StationEvent, TempCalibration
 from .units import SYSTEMS, UNITS_COOKIE, prefs_for_request
 
 
@@ -275,6 +275,7 @@ def station_chart_data(request, slug):
             response['Content-Disposition'] = f'attachment; filename="{name}"'
             return response
         data = charts.history(station, start, end, prefs, include_private=owner)
+        data['events'] = charts.events(station, start, end, include_private=owner)
     elif kind == 'rose':
         start, end = _parse_range(request, station)
         data = charts.wind_rose(station, start, end, prefs)
@@ -650,3 +651,35 @@ def compare_json(request):
     response = JsonResponse({'units': prefs.as_json(), 'tz': chosen[0].timezone, **data})
     response['Cache-Control'] = 'private, max-age=60'
     return response
+
+
+# ── Station log ───────────────────────────────────────────────────────────────
+
+@login_required
+def station_log(request, slug, pk=None):
+    """List the station's log, and add or edit an entry (?edit=<pk> pre-fills the form)."""
+    station = _owned_station(request, slug)
+    instance = None
+    edit_pk = pk or request.GET.get('edit')
+    if edit_pk:
+        instance = get_object_or_404(StationEvent, pk=edit_pk, station=station)
+    form = StationEventForm(request.POST or None, instance=instance, station=station)
+    if request.method == 'POST' and form.is_valid():
+        form.save(request.user)
+        messages.success(request, 'Log entry saved.' if instance else 'Log entry added.')
+        return redirect('weather:station-log', slug=station.slug)
+    if instance is None and not request.POST:
+        form.initial.setdefault('date', timezone.now().astimezone(station.tzinfo).date())
+    return render(request, 'weather/station_log.html', {
+        'station': station, 'tab': 'log', 'form': form, 'editing': instance,
+        'events': station.events.all(),
+    })
+
+
+@login_required
+@require_POST
+def station_log_delete(request, slug, pk):
+    station = _owned_station(request, slug)
+    get_object_or_404(StationEvent, pk=pk, station=station).delete()
+    messages.success(request, 'Log entry deleted.')
+    return redirect('weather:station-log', slug=station.slug)

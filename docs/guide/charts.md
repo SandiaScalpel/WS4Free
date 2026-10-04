@@ -27,6 +27,8 @@ humidity, wind speed and gust, rain, pressure and solar radiation, plus any
   right-hand scale, of the total since the start of the range.
 - **Gaps**: when the station was offline the lines break rather than drawing
   a straight line across the missing time.
+- **Station log** entries (a move, a new sensor…) show as dashed vertical
+  markers; hover near one to read it. See [Settings and sharing](settings.md#station-log).
 - **Download CSV** saves the range in the units you're viewing.
 
 ## Wind rose
@@ -43,7 +45,9 @@ History. Days with too little data are left blank rather than shown as zero.
 ## Year over year
 
 One line per year: cumulative rain since January 1, or 7-day averages of daily
-highs or lows. Click a year in the legend to hide or show it.
+highs or lows. Click a year in the legend to hide or show it. Hovering lists
+every year, highest value first; put the pointer right on a line to highlight
+that year and see only its value.
 
 ## Comparing stations
 

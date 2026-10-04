@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from django.db.models import Q
 
-from .models import EXCLUSION_GROUPS, DataExclusion, SiteSettings, Station, TempCalibration
+from .models import EXCLUSION_GROUPS, DataExclusion, SiteSettings, Station, StationEvent, TempCalibration
 from .units import FEET_PER_METER, default_prefs
 
 
@@ -263,3 +263,46 @@ class CalibrationForm(forms.Form):
         coef = {'night': to_c(d['night'] or 0.0), 'day': to_c(d['day'] or 0.0), 'solar': to_c(d['solar'] or 0.0)}
         return TempCalibration.objects.create(**common, status='pending',
                                               coefficients={str(m): dict(coef) for m in range(1, 13)})
+
+
+class StationEventForm(forms.ModelForm):
+    """A station log entry. Date and optional time are the station's local time."""
+    date = forms.DateField(widget=forms.DateInput(attrs={'type': 'date'}))
+    time = forms.TimeField(required=False, widget=forms.TimeInput(attrs={'type': 'time'}, format='%H:%M'),
+                           help_text='Optional. Leave blank if you only know the day.')
+
+    class Meta:
+        model = StationEvent
+        fields = ['kind', 'title', 'notes', 'is_public']
+        labels = {'kind': 'Type', 'is_public': 'Show to visitors'}
+        widgets = {'notes': forms.Textarea(attrs={'rows': 3}),
+                   'title': forms.TextInput(attrs={'placeholder': 'e.g. Moved 80 ft southwest, away from the house'})}
+        help_texts = {'is_public': 'Public entries appear as markers on the charts for everyone; private ones only for you.'}
+
+    def __init__(self, *args, station, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.station = station
+        if self.instance.pk:
+            local = self.instance.occurred_at.astimezone(station.tzinfo)
+            self.initial['date'] = local.date()
+            self.initial['time'] = local.time().replace(second=0, microsecond=0) if self.instance.has_time else None
+
+    def clean(self):
+        data = super().clean()
+        date, time = data.get('date'), data.get('time')
+        if date:
+            when = dt.datetime.combine(date, time or dt.time(), tzinfo=self.station.tzinfo)
+            if when > timezone.now() + dt.timedelta(days=1):
+                self.add_error('date', 'The date can\'t be in the future.')
+            data['occurred_at'] = when.astimezone(dt.UTC)
+        return data
+
+    def save(self, user=None):
+        event = super().save(commit=False)
+        event.station = self.station
+        event.occurred_at = self.cleaned_data['occurred_at']
+        event.has_time = self.cleaned_data.get('time') is not None
+        if not event.pk:
+            event.created_by = user
+        event.save()
+        return event

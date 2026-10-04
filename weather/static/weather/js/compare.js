@@ -153,6 +153,7 @@
             series = shown.map((st) => this.points(st, def.key));
           }
           const ch = echarts.getInstanceByDom(el) || echarts.init(el);
+          const focus = window.WS4FreeCharts.trackFocus(ch);
           ch.group = 'compare';
           ch.setOption({
             animation: false, textStyle: { fontFamily: FONT },
@@ -168,8 +169,7 @@
               axisPointer: { type: 'line', lineStyle: { color: c.muted, width: 1, type: 'solid' } },
               formatter: (ps) => {
                 let html = `<div style="color:${c.muted};margin-bottom:2px">${when.format(new Date(ps[0].value[0]))}</div>`;
-                ps.forEach((p) => {
-                  if (p.value[1] == null) return;
+                window.WS4FreeCharts.focusedOrRanked(ps, focus).forEach((p) => {
                   const v = diff ? (p.value[1] > 0 ? '+' : '') + fmt(p.value[1], tipDigits) : fmt(p.value[1], tipDigits);
                   html += `<div style="display:flex;align-items:center;gap:8px;line-height:1.6"><span style="display:inline-block;width:12px;height:2px;background:${p.color}"></span><b>${v}</b><span style="color:${c.muted}">${p.seriesName}</span></div>`;
                 });
@@ -182,7 +182,7 @@
             }] : []),
             series: shown.map((st, i) => ({
               name: diff ? `${st.name} − ${base.name}` : st.name, type: 'line', data: series[i], showSymbol: false,
-              connectNulls: false, sampling: 'lttb', emphasis: { focus: 'series' },
+              connectNulls: false, sampling: 'lttb', emphasis: { focus: 'series' }, triggerLineEvent: true,
               lineStyle: { width: 2, color: this.colorOf(st.slug), cap: 'round', join: 'round' }, itemStyle: { color: this.colorOf(st.slug) },
               markLine: diff && i === 0 ? { silent: true, symbol: 'none', label: { show: false }, lineStyle: { color: c.muted, type: 'solid', width: 1 }, data: [{ yAxis: 0 }] } : undefined,
             })),

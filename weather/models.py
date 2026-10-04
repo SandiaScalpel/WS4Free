@@ -475,3 +475,29 @@ class StationForecast(models.Model):
 
     def __str__(self):
         return f'Forecast for {self.station}'
+
+
+class StationEvent(models.Model):
+    """A dated note in a station's log: it was moved, a sensor was replaced, a battery
+    changed… Shown as markers on the charts so later readers know why the data changed."""
+    KIND_CHOICES = [
+        ('moved', 'Moved'), ('sensor', 'Sensor replaced'), ('maintenance', 'Maintenance'),
+        ('battery', 'Battery changed'), ('outage', 'Outage'), ('other', 'Other'),
+    ]
+
+    station = models.ForeignKey(Station, on_delete=models.CASCADE, related_name='events')
+    occurred_at = models.DateTimeField(help_text='UTC. Local midnight when no time was given.')
+    has_time = models.BooleanField(default=False)
+    kind = models.CharField(max_length=12, choices=KIND_CHOICES, default='other')
+    title = models.CharField(max_length=120)
+    notes = models.TextField(blank=True)
+    is_public = models.BooleanField('public', default=True,
+                                    help_text='Visitors see public entries on the charts; private ones only you see.')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-occurred_at']
+
+    def __str__(self):
+        return f'{self.station}: {self.title} ({self.occurred_at:%Y-%m-%d})'

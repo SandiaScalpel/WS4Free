@@ -109,7 +109,8 @@ class ForecastTests(TestCase):
         LatestReading.objects.create(station=self.station, timestamp=NOW, source='api', data={'temp_c': 20.0})
         ctx = dashboard.build(self.station, IMPERIAL, now=NOW)
         self.assertEqual([d['day'] for d in ctx['forecast']], ['Today', 'Sat', 'Sun'])
-        html = self.client.get(reverse('weather:station-live', args=[self.station.slug])).content.decode()
+        with mock.patch('weather.dashboard.timezone.now', return_value=NOW):     # the fixture's days are around NOW
+            html = self.client.get(reverse('weather:station-live', args=[self.station.slug])).content.decode()
         self.assertIn('Weather data by Open-Meteo.com', html)
         self.assertIn('aria-label="Thunderstorms"', html)
         self.assertIn('70%', html)

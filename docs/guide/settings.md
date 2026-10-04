@@ -22,6 +22,21 @@ Owners reach these from **Manage** on any station page.
 - **Extra sensors**: names and public switches; see
   [Extra sensors](extra-sensors.md).
 
+## Station log
+
+The **Station log** tab (under **Manage**) is a diary of what happened to the
+station: when it was moved, a sensor was replaced, a battery changed, or it
+was offline for a reason worth remembering. Each entry has a date (and, if you
+know it, a time), a type, a short title and optional notes.
+
+Entries appear on the **Charts** tab as dashed vertical markers, labelled with
+their type on the top chart; hover near one to read it. That way anyone looking
+at the history later can see why the readings changed, for example a jump in
+wind speed after the station was moved to a more open spot. Entries are
+public by default; untick **Show to visitors** to keep one to yourself.
+
+## Console, data quality and log tabs
+
 The **Console & uploads** tab has the upload address and log (see
 [Connecting a station](connecting.md)); **Data quality** has exclusions and
 calibration (see [Data quality and calibration](data-quality.md)).
