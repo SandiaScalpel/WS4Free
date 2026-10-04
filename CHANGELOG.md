@@ -7,6 +7,18 @@ each release for anything you need to do beyond the usual steps in the README.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Changed
+
+- **Stations** in the header is now a drop-down list of the stations you can
+  see (when there's more than one), with **All stations** at the bottom.
+- Site administrators have **Manage stations** in their user menu, beside
+  **Site settings**: the station list with **Add a station**, even on a site
+  with only one station.
+- On a station page, the button beside the station's name that opens another
+  station on the same tab is now called **Switch station**.
+
 ## 1.1.0 — 2026-10-04
 
 ### Added

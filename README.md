@@ -182,8 +182,8 @@ its name, location and time zone:
 python manage.py import_ambient_stations --owner <your-username>
 ```
 
-Otherwise sign in as a staff user and choose **Stations → Add a station** (or
-**Add a station** on an empty site): a name, where its readings come from
+Otherwise sign in as a staff user, open **Manage stations** in the user menu
+and choose **Add a station** (or **Add a station** on an empty site): a name, where its readings come from
 (Ambient Weather, Ecowitt / Fine Offset, WeeWX or other Wunderground-style
 uploads), time zone and location. Only Ambient stations need a MAC address,
 and only for the Ambient Weather API.

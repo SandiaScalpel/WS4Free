@@ -11,7 +11,7 @@
     {% if other_stations %}
     <div class="relative" x-data="{ open: false }" @keydown.escape.window="open = false">
       <button type="button" class="btn btn-secondary btn-sm" @click="open = !open" :aria-expanded="open" aria-haspopup="menu">
-        Stations
+        Switch station
         <svg class="size-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M5.2 7.2a.75.75 0 0 1 1.06.02L10 11.1l3.74-3.88a.75.75 0 1 1 1.08 1.04l-4.28 4.44a.75.75 0 0 1-1.08 0L5.18 8.26a.75.75 0 0 1 .02-1.06Z" clip-rule="evenodd"/></svg>
       </button>
       <div x-show="open" x-cloak @click.outside="open = false" x-transition.origin.top.right class="card absolute right-0 z-20 mt-2 w-60 p-1.5" role="menu">

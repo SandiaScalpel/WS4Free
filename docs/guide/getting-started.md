@@ -53,8 +53,12 @@ security → Appearance**; the choice follows you to any device you sign in on.
   station, or a list of stations when the site has several and no main one is
   set.
 - **Stations** in the header, shown when there's more than one station you can
-  see, lists them all. On a station page, the **Stations** menu switches to
-  another station, staying on the same tab.
+  see, drops down a list of them to choose from; **All stations** at the bottom
+  opens the full list. On a station page, **Switch station** beside the station's
+  name opens another station on the same tab.
+- Site administrators also find **Manage stations** in their user menu, beside
+  **Site settings**: the list of every station, with **Add a station**, even
+  when the site has only one.
 - **Help**, at the top right, opens this guide.
 - Each station has tabs: **Overview**, **Charts**, **Almanac**, **Growing** and
   **Reports**. Owners also see **Manage**, which leads to **Settings**,

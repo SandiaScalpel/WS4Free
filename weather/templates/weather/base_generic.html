@@ -37,7 +37,19 @@
 
     <nav class="ml-4 hidden items-center gap-1 md:flex" aria-label="Main">
       {% block nav %}
-      {% if visible_station_count > 1 %}<a href="{% url 'weather:stations' %}" class="nav-link" {% if request.resolver_match.url_name == 'stations' %}aria-current="page"{% endif %}>Stations</a>
+      {% if visible_station_count > 1 %}
+      <div class="relative" x-data="{ open: false }" @keydown.escape.window="open = false">
+        <button type="button" class="nav-link inline-flex items-center gap-1" @click="open = !open" :aria-expanded="open" aria-haspopup="menu">
+          Stations
+          <svg class="size-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M5.2 7.2a.75.75 0 0 1 1.06.02L10 11.1l3.74-3.88a.75.75 0 1 1 1.08 1.04l-4.28 4.44a.75.75 0 0 1-1.08 0L5.18 8.26a.75.75 0 0 1 .02-1.06Z" clip-rule="evenodd"/></svg>
+        </button>
+        <div x-show="open" x-cloak @click.outside="open = false" x-transition.origin.top.left
+             class="card absolute left-0 z-20 mt-2 max-h-[70vh] w-64 overflow-y-auto p-1.5" role="menu">
+          {% for st in nav_stations %}<a href="{% url 'weather:station' st.slug %}" class="nav-link block truncate" role="menuitem" {% if station and station.pk == st.pk %}aria-current="page"{% endif %}>{{ st.name }}</a>{% endfor %}
+          <div class="my-1 border-t border-line"></div>
+          <a href="{% url 'weather:stations' %}" class="nav-link block" role="menuitem">All stations</a>
+        </div>
+      </div>
       <a href="{% url 'weather:compare' %}" class="nav-link" {% if request.resolver_match.url_name == 'compare' %}aria-current="page"{% endif %}>Compare</a>{% endif %}
       {% endblock %}
     </nav>
@@ -66,6 +78,7 @@
              class="card absolute right-0 mt-2 w-56 p-1.5" role="menu">
           <a href="{% url 'accounts:settings' %}" class="nav-link block" role="menuitem">Settings &amp; security</a>
           {% if user.is_staff %}<a href="{% url 'weather:site-settings' %}" class="nav-link block" role="menuitem">Site settings</a>
+          <a href="{% url 'weather:stations' %}" class="nav-link block" role="menuitem">Manage stations</a>
           <a href="{% url 'admin:index' %}" class="nav-link block" role="menuitem">Admin</a>{% endif %}
           <div class="my-1 border-t border-line"></div>
           <form method="post" action="{% url 'logout' %}">{% csrf_token %}
