@@ -7,7 +7,10 @@ each release for anything you need to do beyond the usual steps in the README.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 1.0.0 — 2026-10-04
+
+The first stable release: everything from the 0.x series, plus the forecast
+page and hourly forecast below.
 
 ### Added
 
@@ -22,6 +25,13 @@ and versions follow [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - The forecast now covers 16 days (was 14).
+- README: back up the database before upgrading, with the steps for Docker and
+  for installs without it.
+
+### Upgrading
+
+- Back up the database, then run `migrate` (Docker does this for you). The
+  forecast is fetched again on the next dashboard view, now with hourly data.
 
 ## 0.9.0 — 2026-10-04
 
