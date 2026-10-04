@@ -35,6 +35,9 @@ urlpatterns = [
     path('stations/<slug:slug>/log/', views.station_log, name='station-log'),
     path('stations/<slug:slug>/log/<int:pk>/', views.station_log, name='station-log-edit'),
     path('stations/<slug:slug>/log/<int:pk>/delete/', views.station_log_delete, name='station-log-delete'),
+    path('stations/<slug:slug>/neighbours/', views.station_neighbours, name='station-neighbours'),
+    path('stations/<slug:slug>/neighbours/<int:pk>/include/', views.station_neighbour_include, name='station-neighbour-include'),
+    path('stations/<slug:slug>/neighbours/<int:pk>/delete/', views.station_neighbour_delete, name='station-neighbour-delete'),
     path('stations/<slug:slug>/rotate-token/', views.station_rotate_token, name='station-rotate-token'),
     # Consoles append their parameters to the configured path, sometimes without a
     # '?', so everything after the token is captured and parsed as parameters.

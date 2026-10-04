@@ -541,3 +541,42 @@ class StationEvent(models.Model):
 
     def __str__(self):
         return f'{self.station}: {self.title} ({self.occurred_at:%Y-%m-%d})'
+
+
+class Neighbour(models.Model):
+    """Another weather station near this one, on Weather Underground, whose current
+    conditions are polled (weather.neighbours) to compare this station's readings with."""
+    station = models.ForeignKey(Station, on_delete=models.CASCADE, related_name='neighbours')
+    wu_id = models.CharField('Weather Underground station ID', max_length=32)
+    label = models.CharField(max_length=100, blank=True, help_text='Its neighbourhood, as Weather Underground names it.')
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    elevation_m = models.FloatField(null=True, blank=True)
+    include = models.BooleanField(default=True, help_text='Count it in the comparison. Turn off a station that reads oddly.')
+    added_at = models.DateTimeField(auto_now_add=True)
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    last_ok_at = models.DateTimeField(null=True, blank=True, help_text='When it last returned a reading.')
+    last_error = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        ordering = ['wu_id']
+        constraints = [models.UniqueConstraint(fields=['station', 'wu_id'], name='uniq_neighbour_station_wu_id')]
+
+    def __str__(self):
+        return f'{self.wu_id} (near {self.station})'
+
+
+class NeighbourReading(models.Model):
+    """One current-conditions reading from a neighbouring station, SI units, stamped with
+    the time the neighbour took it (UTC)."""
+    neighbour = models.ForeignKey(Neighbour, on_delete=models.CASCADE, related_name='readings')
+    timestamp = models.DateTimeField()
+    temp_c = models.FloatField(null=True, blank=True)
+    humidity = models.FloatField(null=True, blank=True)
+    dewpoint_c = models.FloatField(null=True, blank=True)
+    qc_status = models.SmallIntegerField(null=True, blank=True,
+                                         help_text="Weather Underground's quality check: 1 passed, -1 failed.")
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['neighbour', 'timestamp'], name='uniq_neighbour_reading')]
+        indexes = [models.Index(fields=['timestamp'])]

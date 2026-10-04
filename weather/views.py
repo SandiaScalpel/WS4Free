@@ -14,12 +14,13 @@ from django.views.decorators.http import require_POST
 
 from . import agro, almanac, charts, dashboard, reports
 from . import forecast as forecasts
+from . import neighbours as neighbour_data
 from . import calibration, quality
 from . import compare as compare_data
 from . import help as help_docs
 from .forms import CalibrationForm, ExclusionForm, StationCreateForm, SiteSettingsForm, StationEventForm, StationSettingsForm
 from .ingest.store import mark_dirty
-from .models import DailyRollup, DataExclusion, Observation, SiteSettings, Station, StationEvent, TempCalibration
+from .models import DailyRollup, DataExclusion, Neighbour, Observation, SiteSettings, Station, StationEvent, TempCalibration
 from .units import SYSTEMS, UNITS_COOKIE, prefs_for_request
 
 
@@ -752,3 +753,96 @@ def station_log_delete(request, slug, pk):
     get_object_or_404(StationEvent, pk=pk, station=station).delete()
     messages.success(request, 'Log entry deleted.')
     return redirect('weather:station-log', slug=station.slug)
+
+
+# ── Neighbouring stations ─────────────────────────────────────────────────────
+
+@login_required
+def station_neighbours(request, slug):
+    """Owner's list of neighbouring Weather Underground stations, and how this
+    station's temperature and humidity compare with theirs."""
+    station = _owned_station(request, slug)
+    if request.method == 'POST':
+        try:
+            added = neighbour_data.add(station, request.POST.get('wu_id', ''))
+        except ValueError as exc:
+            messages.error(request, str(exc))
+        else:
+            messages.success(request, f'{added.wu_id} added.')
+        return redirect('weather:station-neighbours', slug=station.slug)
+
+    prefs = prefs_for_request(request)
+    now = timezone.now()
+    range_key = request.GET.get('range') if request.GET.get('range') in neighbour_data.RANGES else '7d'
+    start = now - dt.timedelta(days=neighbour_data.RANGES[range_key])
+    result = neighbour_data.compare(station, start, now)
+    rows = []
+    for n in station.neighbours.all():
+        latest = n.readings.order_by('-timestamp').first()
+        km = neighbour_data.distance_km(station, n)
+        offset = result['neighbours'].get(n.pk, {})
+        rows.append({
+            'n': n, 'latest': latest,
+            'distance': None if km is None else (km / 1.609344 if prefs.wind == 'mph' else km),
+            'elevation_diff': None if n.elevation_m is None or station.elevation_m is None else (
+                (n.elevation_m - station.elevation_m) * (3.28084 if prefs.temp == 'F' else 1)),
+            'temp_offset': offset.get('temp_c'), 'humidity_offset': offset.get('humidity'),
+        })
+    latest = getattr(station, 'latest', None)
+    ours_now = dashboard.live_values(station, latest)
+    live = neighbour_data.live(station, now)
+    if live:
+        live['temp_diff'] = _diff(ours_now.get('temp_c'), live['temp_c'])
+        live['humidity_diff'] = _diff(ours_now.get('humidity'), live['humidity'])
+    return render(request, 'weather/station_neighbours.html', {
+        'station': station, 'tab': 'neighbours',
+        'key_set': bool(settings.WU_API_KEY),
+        'poll_minutes': settings.WU_POLL_MINUTES,
+        'neighbours': rows,
+        'distance_unit': 'mi' if prefs.wind == 'mph' else 'km',
+        'elevation_unit': 'ft' if prefs.temp == 'F' else 'm',
+        'calls_per_day': neighbour_data.calls_per_day(),
+        'daily_limit': neighbour_data.DAILY_LIMIT,
+        'range_key': range_key, 'ranges': [('24h', '24 hours'), ('7d', '7 days'), ('30d', '30 days')],
+        'summary': result['summary'],
+        'live': live,
+        'ours_now': ours_now,
+        'chart': {
+            'units': prefs.as_json(),
+            'tz': station.timezone,
+            'rows': [[r['t'].isoformat(),
+                      _round(prefs.t(r['temp_c'][0])), _round(prefs.t(r['temp_c'][1])), r['temp_c'][2],
+                      _round(r['humidity'][0]), _round(r['humidity'][1]), r['humidity'][2]] for r in result['rows']],
+            'by_hour': {'temp_c': [_round(prefs.t_delta(v), 2) for v in result['by_hour']['temp_c']],
+                        'humidity': [_round(v, 1) for v in result['by_hour']['humidity']]},
+        },
+    })
+
+
+def _diff(a, b):
+    return None if a is None or b is None else a - b
+
+
+def _round(value, digits=1):
+    return None if value is None else round(value, digits)
+
+
+@login_required
+@require_POST
+def station_neighbour_include(request, slug, pk):
+    station = _owned_station(request, slug)
+    neighbour = get_object_or_404(Neighbour, pk=pk, station=station)
+    neighbour.include = not neighbour.include
+    neighbour.save(update_fields=['include'])
+    messages.success(request, f'{neighbour.wu_id} is {"counted in" if neighbour.include else "left out of"} the comparison.')
+    return redirect('weather:station-neighbours', slug=station.slug)
+
+
+@login_required
+@require_POST
+def station_neighbour_delete(request, slug, pk):
+    station = _owned_station(request, slug)
+    neighbour = get_object_or_404(Neighbour, pk=pk, station=station)
+    neighbour.delete()
+    messages.success(request, f'{neighbour.wu_id} removed, with its readings.')
+    return redirect('weather:station-neighbours', slug=station.slug)

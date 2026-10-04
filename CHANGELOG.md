@@ -7,6 +7,24 @@ each release for anything you need to do beyond the usual steps in the README.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **Neighbouring stations** (Manage → Neighbours): compare your temperature and
+  humidity with nearby Weather Underground stations you choose. Right now, over
+  24 hours, 7 or 30 days (overall, with the sun up, and at night), and by hour
+  of the day, against the neighbours' average with the highest and lowest
+  reading left out. Each neighbour shows how far it usually reads from the others.
+  The owner also sees the neighbours' current average on the dashboard.
+
+### Upgrading
+
+- Run `migrate`. To use neighbouring stations, set `WU_API_KEY` in `.env` (a
+  free Weather Underground key for owners of stations that upload to WU), and
+  schedule `manage.py poll_neighbours` every 5 minutes. The Docker scheduler
+  runs it for you.
+
 ## 1.0.0 — 2026-10-04
 
 The first stable release: everything from the 0.x series, plus the forecast

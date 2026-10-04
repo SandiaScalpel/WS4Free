@@ -33,6 +33,8 @@
           <span class="text-faint" title="Wind chill: at 50 °F or colder with wind of 3 mph or more">(wind chill)</span>{% elif feels_kind == 'heat_index' %}
           <span class="text-faint" title="Heat index: at 80 °F or warmer, from temperature and humidity">(heat index)</span>{% endif %}{% if calibrated %}
           <span class="badge ml-1 bg-warn/15 text-warn" title="Corrected for a sensor that reads wrong; an estimate, not a direct measurement">Corrected</span>{% endif %}</p>
+        {% if neighbours %}<p class="mt-1 text-sm text-muted"><a href="{% url 'weather:station-neighbours' station.slug %}" class="text-muted no-underline hover:text-ink" title="Only you see this. Average of your neighbouring stations' latest readings, highest and lowest left out">Neighbours</a>
+          <span class="font-medium text-ink">{{ neighbours.temp_c|temp:units }}</span>{% if neighbours.temp_c_diff is not None %} <span class="text-faint">(you {{ neighbours.temp_c_diff|temp_delta:units }})</span>{% endif %}</p>{% endif %}
       </div>
       <dl class="grid grid-cols-2 gap-x-6 gap-y-4 text-sm sm:justify-self-end">
         <div><dt class="text-muted">Today's high</dt><dd class="mt-0.5 text-lg font-semibold">{{ today.high_c|temp:units }}</dd></div>

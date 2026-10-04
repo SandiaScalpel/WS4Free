@@ -1,0 +1,164 @@
+{% extends "weather/base_generic.html" %}
+{% load static tz humanize weather_units %}
+{% block title %}Neighbours · {{ station.name }} · {{ site.site_title }}{% endblock %}
+{% block extra_head %}
+<script defer src="{% static 'weather/vendor/echarts.min.js' %}"></script>
+<script defer src="{% static 'weather/js/charts.js' %}"></script>
+<script defer src="{% static 'weather/js/neighbours.js' %}"></script>
+{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-4xl">
+  {% include "weather/partials/station_header.html" %}
+  {% timezone station.timezone %}
+
+  <p class="mt-6 max-w-prose text-sm text-muted">
+    Compare your temperature and humidity with nearby stations on Weather Underground. Their current conditions are
+    fetched every {{ poll_minutes }} minutes and matched to your readings for the same five minutes. The comparison
+    averages the neighbours after leaving out the highest and the lowest reading, so one badly placed
+    sensor doesn't skew it. Only you can see this page.
+  </p>
+
+  {% if not key_set %}
+  <section class="card mt-6 p-6" aria-labelledby="key-title">
+    <h2 id="key-title" class="text-base font-semibold">Weather Underground API key needed</h2>
+    <ol class="mt-3 list-decimal space-y-1.5 pl-5 text-sm text-muted">
+      <li>Have a station upload to Weather Underground (on Ambient consoles: the awnet app → Weather Underground).
+        WU gives free API keys only to owners of stations that upload to it.</li>
+      <li>Create a key at <a href="https://www.wunderground.com/member/api-keys" rel="noopener" target="_blank">wunderground.com/member/api-keys</a>.</li>
+      <li>Add <code>WU_API_KEY=&lt;your key&gt;</code> to the server's <code>.env</code> and restart WS4Free.</li>
+    </ol>
+  </section>
+  {% endif %}
+
+  {% if live %}
+  <section class="card mt-6 p-6" aria-labelledby="now-title">
+    <h2 id="now-title" class="text-base font-semibold">Right now</h2>
+    <dl class="mt-3 grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
+      <div><dt class="text-muted">You</dt>
+        <dd class="mt-0.5 text-lg font-semibold">{{ ours_now.temp_c|temp:units }} <span class="text-muted">· {{ ours_now.humidity|pct }}</span></dd></div>
+      <div><dt class="text-muted">Neighbours <span class="text-faint">(average of {{ live.n }}{% if live.reporting > live.n %}: highest and lowest of {{ live.reporting }} left out{% endif %})</span></dt>
+        <dd class="mt-0.5 text-lg font-semibold">{{ live.temp_c|temp:units }} <span class="text-muted">· {{ live.humidity|pct }}</span></dd></div>
+      <div><dt class="text-muted">Difference</dt>
+        <dd class="mt-0.5 text-lg font-semibold">{{ live.temp_diff|temp_delta:units }}
+          <span class="text-muted">· {% if live.humidity_diff is not None %}{{ live.humidity_diff|signed:0 }}%{% else %}—{% endif %}</span></dd></div>
+    </dl>
+    <p class="mt-2 text-xs text-faint">Neighbours' newest reading {{ live.newest|timesince }} ago.</p>
+  </section>
+  {% endif %}
+
+  <section class="card mt-6 p-6" aria-labelledby="list-title">
+    <div class="flex flex-wrap items-baseline justify-between gap-3">
+      <h2 id="list-title" class="text-base font-semibold">Stations</h2>
+      {% if neighbours %}<p class="text-xs {% if calls_per_day > daily_limit %}text-bad{% else %}text-faint{% endif %}">{{ calls_per_day|intcomma }} of Weather Underground's {{ daily_limit|intcomma }} requests a day</p>{% endif %}
+    </div>
+    {% if calls_per_day > daily_limit %}<p class="alert alert-warning mt-3" role="status">That's more than Weather Underground allows a day. Remove some stations, or poll less often (<code>WU_POLL_MINUTES</code> in <code>.env</code>).</p>{% endif %}
+    {% if key_set %}
+    <form method="post" class="mt-4 flex flex-wrap items-end gap-3">
+      {% csrf_token %}
+      <div class="min-w-0 flex-1">
+        <label for="wu-id">Add a station</label>
+        <input id="wu-id" name="wu_id" type="text" required placeholder="Station ID, e.g. KNMALBUQ123, or its wunderground.com link" class="w-full" autocomplete="off" spellcheck="false">
+      </div>
+      <button type="submit" class="btn btn-primary">Add</button>
+    </form>
+    <p class="mt-2 text-xs text-faint">Find IDs on <a href="https://www.wunderground.com/wundermap" rel="noopener" target="_blank">Wundermap</a>
+      (turn on the station layer). Pick stations at about your elevation and in similar terrain: a valley floor and a
+      hilltop differ on calm nights whatever the sensors are like.</p>
+    {% endif %}
+
+    {% if neighbours %}
+    <ul class="mt-5 divide-y divide-line border-t border-line">
+      {% for row in neighbours %}{% with n=row.n %}
+      <li class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 py-3 {% if not n.include %}opacity-60{% endif %}">
+        <div class="min-w-0">
+          <p class="font-medium"><a href="https://www.wunderground.com/dashboard/pws/{{ n.wu_id }}" rel="noopener" target="_blank">{{ n.wu_id }}</a>
+            {% if n.label %}<span class="text-sm font-normal text-muted">· {{ n.label }}</span>{% endif %}
+            {% if not n.include %}<span class="badge ml-1 bg-surface-2 text-muted">Left out</span>{% endif %}</p>
+          <p class="mt-0.5 text-xs text-faint">
+            {% if row.distance is not None %}{{ row.distance|floatformat:1 }} {{ distance_unit }} away{% endif %}{% if row.elevation_diff is not None %} · {{ row.elevation_diff|signed:0 }} {{ elevation_unit }} elevation{% endif %}
+            {% if row.latest %} · {{ row.latest.temp_c|temp:units }}, {{ row.latest.humidity|pct }} {{ row.latest.timestamp|timesince }} ago{% endif %}
+          </p>
+          {% if row.temp_offset %}<p class="mt-0.5 text-xs text-muted">Compared with the others: {{ row.temp_offset.0|temp_delta:units }}{% if row.humidity_offset %}, {{ row.humidity_offset.0|signed:0 }}% humidity{% endif %} <span class="text-faint">(average over {{ row.temp_offset.1|intcomma }} readings)</span></p>{% endif %}
+          {% if n.last_error %}<p class="mt-0.5 text-xs text-warn">{{ n.last_error }}</p>{% endif %}
+        </div>
+        <div class="flex shrink-0 gap-2">
+          <form method="post" action="{% url 'weather:station-neighbour-include' station.slug n.pk %}">{% csrf_token %}
+            <button class="btn btn-secondary btn-sm">{% if n.include %}Leave out{% else %}Include{% endif %}</button></form>
+          <form method="post" action="{% url 'weather:station-neighbour-delete' station.slug n.pk %}" onsubmit="return confirm('Remove {{ n.wu_id }} and its readings?')">{% csrf_token %}
+            <button class="btn btn-ghost btn-sm">Remove</button></form>
+        </div>
+      </li>
+      {% endwith %}{% endfor %}
+    </ul>
+    {% elif key_set %}
+    <p class="mt-4 text-sm text-muted">No stations yet. Five to ten nearby ones make a steady average.</p>
+    {% endif %}
+  </section>
+
+  {% if neighbours %}
+  <section class="mt-8" aria-labelledby="compare-title">
+    <div class="flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <h2 id="compare-title" class="text-base font-semibold">You compared with your neighbours</h2>
+        <p class="mt-1 text-sm text-muted">Your reading minus the neighbours' average. Positive means you read warmer, or more humid.</p>
+      </div>
+      <nav class="flex gap-1 rounded-lg border border-line p-1" aria-label="Period">
+        {% for key, label in ranges %}<a href="?range={{ key }}" class="rounded-md px-3 py-1 text-sm no-underline {% if key == range_key %}bg-accent-soft text-accent{% else %}text-muted hover:text-ink{% endif %}" {% if key == range_key %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+      </nav>
+    </div>
+
+    <div class="card mt-4 overflow-x-auto relative">
+      <table class="w-full text-sm tabular-nums">
+        <thead class="text-xs text-muted">
+          <tr class="border-b border-line">
+            <th scope="col" class="px-5 py-3 text-left font-medium"></th>
+            <th scope="col" class="px-5 py-3 text-right font-medium">All readings</th>
+            <th scope="col" class="px-5 py-3 text-right font-medium">Sun up</th>
+            <th scope="col" class="px-5 py-3 text-right font-medium">Night</th>
+            <th scope="col" class="px-5 py-3 text-right font-medium">Matched readings</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-line">
+          <tr>
+            <th scope="row" class="px-5 py-3 text-left font-medium">Temperature</th>
+            <td class="px-5 py-3 text-right font-semibold">{{ summary.temp_c.all.mean|temp_delta:units }}</td>
+            <td class="px-5 py-3 text-right">{{ summary.temp_c.day.mean|temp_delta:units }}</td>
+            <td class="px-5 py-3 text-right">{{ summary.temp_c.night.mean|temp_delta:units }}</td>
+            <td class="px-5 py-3 text-right text-muted">{{ summary.temp_c.all.count|default:0|intcomma }}</td>
+          </tr>
+          <tr>
+            <th scope="row" class="px-5 py-3 text-left font-medium">Humidity</th>
+            <td class="px-5 py-3 text-right font-semibold">{% if summary.humidity.all %}{{ summary.humidity.all.mean|signed:0 }}%{% else %}—{% endif %}</td>
+            <td class="px-5 py-3 text-right">{% if summary.humidity.day %}{{ summary.humidity.day.mean|signed:0 }}%{% else %}—{% endif %}</td>
+            <td class="px-5 py-3 text-right">{% if summary.humidity.night %}{{ summary.humidity.night.mean|signed:0 }}%{% else %}—{% endif %}</td>
+            <td class="px-5 py-3 text-right text-muted">{{ summary.humidity.all.count|default:0|intcomma }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="mt-2 text-xs text-faint">Average differences. "Sun up" uses your solar sensor where you have one. Your readings are compared as stored, after any calibration you've applied.</p>
+
+    <div class="mt-4 grid gap-4 lg:grid-cols-2">
+      <figure class="card min-w-0 p-5">
+        <figcaption class="text-sm font-medium">Temperature ({{ units|unit_label:"temp" }})</figcaption>
+        <div class="mt-2 h-56" data-n="temp-series" role="img" aria-label="Line chart of your temperature and the neighbours' average over the period"></div>
+      </figure>
+      <figure class="card min-w-0 p-5">
+        <figcaption class="text-sm font-medium">Temperature difference by time of day ({{ units|unit_label:"temp" }})</figcaption>
+        <div class="mt-2 h-56" data-n="temp-hours" role="img" aria-label="Column chart of your temperature minus the neighbours' average, by hour of the day"></div>
+      </figure>
+      <figure class="card min-w-0 p-5">
+        <figcaption class="text-sm font-medium">Humidity (%)</figcaption>
+        <div class="mt-2 h-56" data-n="humidity-series" role="img" aria-label="Line chart of your humidity and the neighbours' average over the period"></div>
+      </figure>
+      <figure class="card min-w-0 p-5">
+        <figcaption class="text-sm font-medium">Humidity difference by time of day (%)</figcaption>
+        <div class="mt-2 h-56" data-n="humidity-hours" role="img" aria-label="Column chart of your humidity minus the neighbours' average, by hour of the day"></div>
+      </figure>
+    </div>
+    {{ chart|json_script:"neighbours-data" }}
+  </section>
+  {% endif %}
+  {% endtimezone %}
+</div>
+{% endblock %}

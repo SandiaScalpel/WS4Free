@@ -1,5 +1,6 @@
 """Background jobs for the Docker image (a cron replacement with no extra packages).
 
+    every 5 minutes, at :01 :06 …   poll_neighbours     (only when WU_API_KEY is set)
     every 5 minutes, at :02 :07 …   poll_ambient        (only when AMBIENT_* keys are set)
     every 5 minutes, at :04 :09 …   refresh_rollups
     daily at HOUSEKEEPING_TIME       ws4free_housekeeping (local time, TIME_ZONE)
@@ -29,6 +30,8 @@ def run(*args):
 
 def jobs_due(now, last_housekeeping):
     due = []
+    if now.minute % 5 == 1 and os.environ.get('WU_API_KEY'):
+        due.append(('poll_neighbours',))
     if now.minute % 5 == 2 and os.environ.get('AMBIENT_API_KEY') and os.environ.get('AMBIENT_APPLICATION_KEY'):
         due.append(('poll_ambient',))
     if now.minute % 5 == 4:
@@ -40,9 +43,12 @@ def jobs_due(now, last_housekeeping):
 
 def main():
     if os.environ.get('SCHEDULER_ONCE'):
-        for job in (('poll_ambient',), ('refresh_rollups',), ('ws4free_housekeeping',)):
-            if job[0] != 'poll_ambient' or os.environ.get('AMBIENT_API_KEY'):
-                run(*job)
+        for job in (('poll_neighbours',), ('poll_ambient',), ('refresh_rollups',), ('ws4free_housekeeping',)):
+            if job[0] == 'poll_ambient' and not os.environ.get('AMBIENT_API_KEY'):
+                continue
+            if job[0] == 'poll_neighbours' and not os.environ.get('WU_API_KEY'):
+                continue
+            run(*job)
         return
     print(f'[scheduler] started; time zone {TZ.key}, housekeeping at {HOUSEKEEPING:%H:%M}', flush=True)
     last_housekeeping = None

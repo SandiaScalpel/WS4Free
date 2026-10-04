@@ -163,7 +163,18 @@ def num(cell):
 def temp_delta(celsius, prefs=None):
     """A temperature difference, signed: 2.5 °C → '+4.5°F'."""
     p = _prefs(prefs)
-    return DASH if _missing(celsius) else f'{p.t_delta(celsius):+.1f}{p.label("temp")}'
+    return DASH if _missing(celsius) else f'{_no_negative_zero(p.t_delta(celsius), 1):+.1f}{p.label("temp")}'
+
+
+def _no_negative_zero(value, digits):
+    """-0.04 shown to one decimal is '+0.0', not '-0.0'."""
+    return 0.0 if round(value, digits) == 0 else value
+
+
+@register.filter
+def signed(value, digits=1):
+    """A signed difference in the value's own unit: 3.25 → '+3.2'."""
+    return DASH if _missing(value) else f'{_no_negative_zero(value, int(digits)):+.{int(digits)}f}'
 
 
 @register.filter

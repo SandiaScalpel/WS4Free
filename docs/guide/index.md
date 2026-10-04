@@ -28,6 +28,7 @@ the [README](../../README.md).
 | [Growing](growing.md) | Growing degree days, winter chill, evapotranspiration |
 | [Reports](reports.md) | Daily, monthly and yearly summaries with CSV export |
 | [Extra sensors](extra-sensors.md) | Extra temperature channels, soil, leaf wetness, air quality, lightning, leaks |
+| [Neighbouring stations](neighbours.md) | Your temperature and humidity against nearby Weather Underground stations |
 | [Settings and sharing](settings.md) | Station settings, public or private, site settings, your account |
 | [How the numbers work](how-it-works.md) | Rain counting, missing data, time zones and summaries |
 

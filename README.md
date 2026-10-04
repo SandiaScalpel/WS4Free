@@ -34,6 +34,9 @@ good doing it, in light and dark.
 - **Data quality:** exclude a failing sensor's readings without losing them, or
   calibrate a sensor that reads too warm in the sun, fitted against a nearby
   airport station.
+- **Neighbouring stations:** your temperature and humidity against the average
+  of nearby Weather Underground stations you choose (highest and lowest left out), by time of day, to spot a
+  sensor that reads warm in the sun.
 - **Station log:** dated notes (moved, sensor replaced, maintenance…) marked on
   the charts, so later readers know why the data changed.
 - **Multiple stations**, each public or private. Per-user display units.
@@ -74,7 +77,8 @@ in. Compose runs three containers:
 - `db`: MySQL 8.4, with time zone tables loaded automatically.
 - `web`: the app, served by Gunicorn. It applies database migrations on start.
 - `scheduler`: background jobs. It polls the Ambient API every 5 minutes (if
-  you set keys), refreshes the summaries every 5 minutes, and runs nightly
+  you set keys), checks neighbouring Weather Underground stations (if you set
+  `WU_API_KEY`), refreshes the summaries every 5 minutes, and runs nightly
   housekeeping.
 
 For PostgreSQL, use `docker compose -f compose.postgres.yaml up -d`. To run
@@ -241,12 +245,14 @@ outage.
 | Command | When | What it does |
 |---|---|---|
 | `poll_ambient` | every 5 min | Fetches the last 24 hours from the Ambient API and fills gaps the console's pushes left (power cuts, Wi-Fi drops) |
+| `poll_neighbours` | every 5 min | Fetches neighbouring Weather Underground stations that are due (only with `WU_API_KEY`) |
 | `refresh_rollups` | every 5 min | Recomputes rain amounts and the hourly/daily summaries for anything new; takes about a second |
 | `ws4free_housekeeping` | daily | Purges old upload logs and login attempts; downsamples old readings if enabled |
 
 With cron, for example:
 
 ```cron
+1-59/5 * * * *  cd /path/to/ws4free && venv/bin/python manage.py poll_neighbours
 */5 * * * *  cd /path/to/ws4free && venv/bin/python manage.py poll_ambient
 2-59/5 * * * *  cd /path/to/ws4free && venv/bin/python manage.py refresh_rollups
 30 3 * * *   cd /path/to/ws4free && venv/bin/python manage.py ws4free_housekeeping
@@ -382,6 +388,22 @@ station, when the dashboard is viewed, and only the station's location rounded
 to two decimals (about 1 km) is sent. Owners can turn it off per station; set
 `FORECAST_URL=` (empty) in `.env` to turn it off for the whole site. Open-Meteo's
 free API is for non-commercial use.
+
+## Neighbouring stations
+
+A station's **Neighbours** tab (owner only) compares its temperature and
+humidity with nearby [Weather Underground](https://www.wunderground.com/)
+stations the owner chooses: right now, over 24 hours to 30 days, and by hour of
+the day. Each neighbour reading is matched to the station's record for the same
+five minutes, and compared with the neighbours' average after leaving out the
+highest and the lowest reading, so one badly sited station doesn't skew it.
+
+It needs a Weather Underground API key, which WU gives free to owners of
+stations that upload to it (wunderground.com/member/api-keys). Set
+`WU_API_KEY` in `.env`; without it the feature is off. The key allows 1,500
+requests a day: each neighbour polled every `WU_POLL_MINUTES` (default 10)
+uses 144. Only the neighbours' temperature, humidity and dew point are kept,
+and only the owner sees them.
 
 ## Temperature calibration
 

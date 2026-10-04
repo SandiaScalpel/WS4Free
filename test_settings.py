@@ -31,3 +31,5 @@ LOGGING = {'version': 1, 'disable_existing_loggers': False}
 
 # Tests never call the forecast service; weather.tests.test_forecast enables a mocked one.
 FORECAST_URL = ''
+# Nor Weather Underground; weather.tests.test_neighbours mocks it.
+WU_API_KEY = ''

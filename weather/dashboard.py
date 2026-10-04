@@ -13,6 +13,7 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from . import forecast as forecasts
+from . import neighbours as neighbour_data
 from . import sensors as sensor_catalog
 from . import units as u
 from .models import DailyRollup, LatestReading, Observation
@@ -67,22 +68,40 @@ def _series(station, now, prefs):
     }
 
 
+def _live(station, latest):
+    """(data, excluded fields, calibrated?) for the latest reading as it should be shown."""
+    if latest is None:
+        return {}, set(), False
+    data = dict(latest.data)
+    # An ongoing data-quality exclusion (a failing sensor) hides that live value too.
+    excluded = excluded_fields_at(station, latest.timestamp)
+    for field in excluded:
+        data.pop(field, None)
+    corrected = correct_live(station, data, latest.timestamp)
+    return corrected, excluded, corrected is not data
+
+
+def _neighbours(station, data, now):
+    """Owner's line on the temperature card: the neighbours' average now, and the difference."""
+    live = neighbour_data.live(station, now)
+    if live is None:
+        return None
+    for field in ('temp_c', 'humidity'):
+        live[f'{field}_diff'] = None if data.get(field) is None or live[field] is None else data[field] - live[field]
+    return live
+
+
+def live_values(station, latest):
+    """The latest reading's values as the dashboard shows them (exclusions and calibration applied)."""
+    return _live(station, latest)[0]
+
+
 def build(station, prefs, viewer=None, now=None):
     now = now or timezone.now()
     tz = station.tzinfo
     today = now.astimezone(tz).date()
     latest = LatestReading.objects.filter(station=station).first()
-    data = dict(latest.data) if latest else {}
-    calibrated = False
-    excluded = set()
-    if latest:
-        # An ongoing data-quality exclusion (a failing sensor) hides that live value too.
-        excluded = excluded_fields_at(station, latest.timestamp)
-        for field in excluded:
-            data.pop(field, None)
-        corrected = correct_live(station, data, latest.timestamp)
-        calibrated = corrected is not data
-        data = corrected
+    data, excluded, calibrated = _live(station, latest)
     rollup = DailyRollup.objects.filter(station=station, date=today).first()
 
     month_start = today.replace(day=1)
@@ -131,6 +150,7 @@ def build(station, prefs, viewer=None, now=None):
                                                          exclude={f[2:] for f in excluded if f.startswith('x:')},
                                                          include_private=can_see_private),
         'low_batteries': sensor_catalog.low_batteries(latest.extra, latest.source) if latest and can_see_private else [],
+        'neighbours': _neighbours(station, data, now) if can_see_private else None,
         'show_indoor': can_see_private and (data.get('temp_in_c') is not None or data.get('humidity_in') is not None),
         'can_manage': can_see_private,
         'chart_data': {

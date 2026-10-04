@@ -26,6 +26,12 @@ class SchedulerTimingTests(SimpleTestCase):
     def test_no_poll_without_keys(self):
         self.assertEqual(scheduler.jobs_due(self.at(10, 2), None), [])
 
+    @mock.patch.dict(os.environ, {'WU_API_KEY': 'k'})
+    def test_neighbours_only_with_a_key(self):
+        self.assertEqual(scheduler.jobs_due(self.at(10, 1), None), [('poll_neighbours',)])
+        with mock.patch.dict(os.environ, {'WU_API_KEY': ''}):
+            self.assertEqual(scheduler.jobs_due(self.at(10, 1), None), [])
+
     def test_housekeeping_once_a_day(self):
         hk = self.at(scheduler.HOUSEKEEPING.hour, scheduler.HOUSEKEEPING.minute)
         self.assertIn(('ws4free_housekeeping',), scheduler.jobs_due(hk, None))

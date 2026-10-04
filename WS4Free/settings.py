@@ -211,6 +211,13 @@ RAW_RETENTION_YEARS = env.int('RAW_RETENTION_YEARS', default=0)
 # Dashboard forecast (weather.forecast). Empty turns forecasts off site-wide.
 FORECAST_URL = env('FORECAST_URL', default='https://api.open-meteo.com/v1/forecast')
 
+# Neighbouring stations (weather.neighbours): current conditions of chosen Weather
+# Underground stations, for comparing your readings with theirs. The key is the
+# free one WU gives owners of stations that upload to it; empty turns the feature off.
+WU_API_KEY = env('WU_API_KEY', default='')
+WU_API_URL = env('WU_API_URL', default='https://api.weather.com/v2/pws/observations/current')
+WU_POLL_MINUTES = env.int('WU_POLL_MINUTES', default=10)
+
 # Push ingest. INGEST_CAPTURE logs every raw upload (handy while setting up a
 # console or debugging a parser); rejected and unusual uploads are always logged.
 INGEST_CAPTURE = env.bool('INGEST_CAPTURE', default=False)
