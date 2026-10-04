@@ -1,0 +1,10 @@
+{# The forecast's hour-by-hour pop-up. A day button loads partials/forecast_day.html into #forecast-day-body with htmx; app.js opens the dialog when that request starts. Kept outside #live so the 30 s poll never replaces it. #}
+<dialog id="forecast-day" aria-labelledby="forecast-day-title"
+        class="card m-auto max-h-[calc(100dvh-2rem)] w-[min(52rem,calc(100vw-2rem))] overflow-y-auto p-0 text-ink backdrop:bg-black/50">
+  <div id="forecast-day-body" aria-live="polite">
+    <div class="flex items-center justify-between gap-4 px-5 py-4 sm:px-6">
+      <h2 id="forecast-day-title" class="text-sm text-muted">Loading the forecast…</h2>
+      <form method="dialog"><button class="btn btn-ghost btn-sm" aria-label="Close">&times;</button></form>
+    </div>
+  </div>
+</dialog>

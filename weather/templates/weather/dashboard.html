@@ -11,6 +11,7 @@
      hx-headers='{"X-Poll": "1"}' hx-swap="innerHTML">
   {% include "weather/partials/live.html" %}
 </div>
+{% include "weather/partials/forecast_dialog.html" %}
 
 {% if site.about and is_home %}
 <section class="card mt-6 p-6">

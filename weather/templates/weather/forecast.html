@@ -1,0 +1,53 @@
+{% extends "weather/base_generic.html" %}
+{% load static weather_units %}
+{% block title %}Forecast · {{ station.name }} · {{ site.site_title }}{% endblock %}
+{% block extra_head %}<script defer src="{% static 'weather/vendor/echarts.min.js' %}"></script>{% endblock %}
+{% block content %}
+{% include "weather/partials/station_title.html" %}
+
+<section class="card mt-6 min-w-0 p-4 sm:p-6" aria-labelledby="forecast-label">
+  <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-2">
+    <h2 id="forecast-label" class="text-base font-semibold">{% if forecast %}{{ forecast|length }}-day forecast{% else %}Forecast{% endif %}</h2>
+    <a href="https://open-meteo.com/" class="text-xs text-faint no-underline hover:text-muted" rel="noopener" target="_blank">Weather data by Open-Meteo.com</a>
+  </div>
+  {% if forecast %}
+  <p class="mt-1 px-2 text-sm text-muted">Choose a day to see it hour by hour.</p>
+  <div class="mt-4 hidden grid-cols-[7rem_2.25rem_minmax(7rem,10rem)_minmax(10rem,1fr)_5.5rem_10rem_3rem_9rem] gap-x-4 border-b border-line px-2 pb-2 text-xs font-medium text-muted lg:grid" aria-hidden="true">
+    <span>Day</span><span></span><span></span><span class="text-center">Low · High</span><span class="text-right">Rain</span><span class="text-right">Wind · gusts</span><span class="text-right">UV</span><span class="text-right">Sunrise · sunset</span>
+  </div>
+  <ol class="divide-y divide-line">
+    {% for d in forecast %}
+    <li>
+      <button type="button" class="relative grid w-full cursor-pointer grid-cols-[4.5rem_2.25rem_minmax(0,1fr)_3.5rem] items-center gap-x-3 rounded-lg px-2 py-2.5 text-left hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none sm:grid-cols-[6rem_2.25rem_minmax(7rem,10rem)_minmax(0,1fr)_5.5rem] sm:gap-x-4 lg:grid-cols-[7rem_2.25rem_minmax(7rem,10rem)_minmax(10rem,1fr)_5.5rem_10rem_3rem_9rem]"
+              hx-get="{% url 'weather:station-forecast-day' station.slug d.date|date:'Y-m-d' %}" hx-target="#forecast-day-body" hx-swap="innerHTML" aria-haspopup="dialog">
+        <span class="min-w-0">
+          <span class="block text-sm font-semibold">{% if d.day == 'Today' %}Today{% else %}{{ d.date|date:"l"|slice:":3" }}<span class="hidden sm:inline">{{ d.date|date:"l"|slice:"3:" }}</span>{% endif %}</span>
+          <span class="block text-xs text-faint">{{ d.date|date:"M j" }}</span>
+        </span>
+        <span>{% include "weather/partials/forecast_icon.html" with icon=d.icon label=d.label size="size-9" %}</span>
+        <span class="hidden truncate text-sm text-muted sm:block">{{ d.label }}</span>
+        <span class="flex min-w-0 items-center gap-2 text-sm tabular-nums">
+          <span class="w-9 shrink-0 text-right text-muted"><span class="sr-only">Low </span>{{ d.low_c|temp_round:units }}</span>
+          <span class="relative h-1.5 min-w-8 flex-1 rounded-full bg-surface-2" aria-hidden="true">
+            {% if d.bar_width %}<span class="absolute inset-y-0 rounded-full" style="left: {{ d.bar_left }}%; width: {{ d.bar_width }}%; background: var(--ws-temp-line)"></span>{% endif %}
+          </span>
+          <span class="w-9 shrink-0 font-semibold"><span class="sr-only">High </span>{{ d.high_c|temp_round:units }}</span>
+        </span>
+        <span class="text-right text-sm tabular-nums {% if d.rain_pct >= 30 %}text-cool{% else %}text-faint{% endif %}">
+          <span class="sr-only">Chance of rain </span>{% if d.rain_pct is not None %}{{ d.rain_pct }}%{% else %}—{% endif %}
+          {% if d.rain_mm %}<span class="block text-xs">{{ d.rain_mm|rain:units }}</span>{% endif %}
+        </span>
+        <span class="hidden text-right text-sm whitespace-nowrap tabular-nums text-muted lg:block"><span class="sr-only">Wind </span>{% if d.wind_ms is not None %}{{ d.wind_dir|compass }} {{ d.wind_ms|speed_value:units }}<span class="text-faint"> · {{ d.gust_ms|speed:units }}</span>{% else %}—{% endif %}</span>
+        <span class="hidden text-right text-sm tabular-nums text-muted lg:block"><span class="sr-only">UV index </span>{% if d.uv is not None %}{{ d.uv|floatformat:0 }}{% else %}—{% endif %}</span>
+        <span class="hidden text-right text-sm tabular-nums text-muted lg:block">{% if d.sunrise %}<span class="sr-only">Sunrise </span>{{ d.sunrise|time:"g:i" }} · <span class="sr-only">sunset </span>{{ d.sunset|time:"g:i" }}{% else %}—{% endif %}</span>
+      </button>
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <p class="mt-3 px-2 text-sm text-muted">No forecast is available right now.{% if can_manage %} It needs the station's latitude and longitude and the forecast switched on under <a href="{% url 'weather:station-settings' station.slug %}">Settings</a>.{% endif %}</p>
+  {% endif %}
+</section>
+
+{% include "weather/partials/forecast_dialog.html" %}
+{% endblock %}

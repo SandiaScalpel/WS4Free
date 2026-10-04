@@ -172,6 +172,65 @@
     };
   }
 
+  // Forecast pop-up: one day hour by hour. Two small charts sharing the hours
+  // axis (never one chart with two scales): temperature as a line, chance of
+  // rain as columns on a fixed 0–100 % scale.
+  function hourAxis(hours, c, show) {
+    return {
+      type: 'category', data: hours, boundaryGap: true,
+      axisLine: { show: true, lineStyle: { color: c.line, width: 1 } }, axisTick: { show: false },
+      axisLabel: { show, color: c.muted, fontSize: 11, interval: (i) => Number(i) % 6 === 0, formatter: hourLabel },
+    };
+  }
+
+  function hourLabel(hhmm) {
+    const h = Number(String(hhmm).slice(0, 2));
+    return h === 0 ? '12a' : h === 12 ? '12p' : h < 12 ? `${h}a` : `${h - 12}p`;
+  }
+
+  function forecastTemp(d, c) {
+    const color = token('--ws-temp-line'), unit = d.units.labels.temp;
+    return {
+      animation: false,
+      grid: { left: 30, right: 6, top: 8, bottom: 20 },
+      xAxis: hourAxis(d.hours, c, true),
+      yAxis: {
+        type: 'value', scale: true, splitNumber: 3,
+        axisLabel: { color: c.muted, fontSize: 11 }, splitLine: { lineStyle: { color: c.line, opacity: 0.6 } },
+      },
+      tooltip: {
+        ...tooltipBase(c), trigger: 'axis',
+        axisPointer: { type: 'line', lineStyle: { color: c.muted, width: 1, type: 'solid' } },
+        formatter: (ps) => `<span style="color:${c.muted}">${hourLabel(ps[0].name)}m</span><br><b>${ps[0].value == null ? 'No data' : `${Number(ps[0].value).toFixed(0)} ${unit}`}</b>`,
+      },
+      series: [{
+        type: 'line', data: d.temp, showSymbol: false, connectNulls: false,
+        lineStyle: { color, width: 2, cap: 'round', join: 'round' }, itemStyle: { color, borderColor: c.surface, borderWidth: 2 },
+        areaStyle: { color, opacity: 0.1 }, emphasis: { disabled: true },
+      }],
+    };
+  }
+
+  function forecastRain(d, c) {
+    return {
+      animation: false,
+      grid: { left: 30, right: 6, top: 8, bottom: 20 },
+      xAxis: hourAxis(d.hours, c, true),
+      yAxis: {
+        type: 'value', min: 0, max: 100, interval: 50,
+        axisLabel: { color: c.muted, fontSize: 11 }, splitLine: { lineStyle: { color: c.line, opacity: 0.6 } },
+      },
+      tooltip: {
+        ...tooltipBase(c), trigger: 'axis', axisPointer: { type: 'shadow', shadowStyle: { color: c.line, opacity: 0.4 } },
+        formatter: (ps) => `<span style="color:${c.muted}">${hourLabel(ps[0].name)}m</span><br><b>${ps[0].value == null ? 'No data' : `${ps[0].value}% chance of rain`}</b>`,
+      },
+      series: [{
+        type: 'bar', data: d.rain_pct, barMaxWidth: 24, barCategoryGap: '20%',
+        itemStyle: { color: token('--ws-cool'), borderRadius: [4, 4, 0, 0] }, emphasis: { disabled: true },
+      }],
+    };
+  }
+
   function unmount(root) {
     for (const [el, chart] of mounted) {
       if (!el.isConnected || (root && root.contains(el))) { chart.dispose(); mounted.delete(el); }
@@ -180,23 +239,27 @@
 
   function mount(root) {
     if (!window.echarts) return;
+    // A chart reads the block's <script id="chart-data">, or the JSON script its
+    // data-chart-data attribute names (the forecast pop-up brings its own).
     const holder = (root || document).querySelector('#chart-data');
-    if (!holder) return;
-    const data = JSON.parse(holder.textContent);
-    const u = data.units, c = colors();
+    const data = holder ? JSON.parse(holder.textContent) : null;
+    const u = data && data.units, c = colors();
     const build = {
       temp: () => tempHumidity(data.series, u, data.tz, c),
       wind: () => sparkline(data.series.wind, u.labels.wind, 1, data.tz, c),
       pressure: () => sparkline(data.series.pressure, u.labels.pressure, u.digits.pressure, data.tz, c),
       rain_days: () => columns(data.rain_days, u.labels.rain, u.digits.rain, c),
+      forecast_temp: (own) => forecastTemp(own, c),
+      forecast_rain: (own) => forecastRain(own, c),
     };
     (root || document).querySelectorAll('[data-chart]').forEach((el) => {
       const make = build[el.dataset.chart];
-      if (!make) return;
+      const ownHolder = el.dataset.chartData && document.getElementById(el.dataset.chartData);
+      if (!make || (!ownHolder && !data)) return;
       const existing = mounted.get(el);
       if (existing) existing.dispose();
       const chart = echarts.init(el, null, { renderer: 'svg' });
-      chart.setOption(make());
+      chart.setOption(make(ownHolder ? JSON.parse(ownHolder.textContent) : null));
       mounted.set(el, chart);
     });
   }
@@ -206,6 +269,36 @@
   document.addEventListener('htmx:afterSettle', (e) => mount(e.detail.target));
   window.addEventListener('ws4f:theme', () => { unmount(document); mount(document); });
   window.addEventListener('resize', () => mounted.forEach((chart) => chart.resize()));
+
+  // ── Forecast pop-up (partials/forecast_dialog.html) ───────────────────────
+  // A day button's htmx request targets the dialog's body: open the dialog as
+  // the request starts, so a slow response shows "Loading" rather than nothing.
+  const LOADING = '<div class="flex items-center justify-between gap-4 px-5 py-4 sm:px-6"><h2 id="forecast-day-title" class="text-sm text-muted">Loading the forecast…</h2>'
+    + '<form method="dialog"><button class="btn btn-ghost btn-sm" aria-label="Close">&times;</button></form></div>';
+  document.addEventListener('htmx:beforeRequest', (e) => {
+    const body = e.detail.target;
+    if (!body || body.id !== 'forecast-day-body') return;
+    const dialog = body.closest('dialog');
+    if (!dialog.open) dialog.showModal();
+  });
+  document.addEventListener('htmx:responseError', (e) => {
+    if (e.detail.target && e.detail.target.id === 'forecast-day-body') {
+      e.detail.target.innerHTML = '<p class="px-5 py-6 text-sm text-muted sm:px-6">That day isn\'t in the forecast any more. Close this and reload the page.</p>';
+    }
+  });
+  // Clicking the backdrop (outside the dialog's box) closes it, like Esc does.
+  document.addEventListener('click', (e) => {
+    if (e.target instanceof HTMLDialogElement && e.target.id === 'forecast-day') {
+      const r = e.target.getBoundingClientRect();
+      if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) e.target.close();
+    }
+  });
+  document.addEventListener('close', (e) => {
+    if (e.target.id !== 'forecast-day') return;
+    const body = e.target.querySelector('#forecast-day-body');
+    unmount(body);
+    body.innerHTML = LOADING;
+  }, true);
 
   document.addEventListener('alpine:init', () => {
     // Header toggle: flips between light and dark from whatever is showing now.

@@ -36,7 +36,7 @@ TITLES = dict(PAGES)
 
 # Which guide page explains each station tab (for the "?" links on those pages).
 TAB_PAGES = {
-    'overview': 'dashboard', 'charts': 'charts', 'almanac': 'almanac', 'growing': 'growing',
+    'overview': 'dashboard', 'forecast': 'dashboard', 'charts': 'charts', 'almanac': 'almanac', 'growing': 'growing',
     'reports': 'reports', 'settings': 'settings', 'console': 'connecting', 'quality': 'data-quality', 'log': 'settings',
 }
 

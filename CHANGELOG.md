@@ -7,6 +7,22 @@ each release for anything you need to do beyond the usual steps in the README.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **Full forecast page**: the dashboard's forecast card links to all 16 days,
+  each with its high and low on a shared temperature scale, chance and amount
+  of rain, wind and gusts, UV index, sunrise and sunset.
+- **Hour-by-hour forecast**: choose any day, on the dashboard card or the full
+  forecast, to open it hour by hour: temperature and chance-of-rain charts and
+  a row per hour with sky, temperature, feels-like, rain, wind and humidity.
+  Clear skies show a moon at night.
+
+### Changed
+
+- The forecast now covers 16 days (was 14).
+
 ## 0.9.0 — 2026-10-04
 
 ### Added

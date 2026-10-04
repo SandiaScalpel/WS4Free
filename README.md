@@ -14,25 +14,30 @@ good doing it, in light and dark.
 - **Ingest:** the console's custom-server upload (Ambient, Wunderground and
   Ecowitt formats, and WeeWX), plus the Ambient Weather API to fill gaps and
   import your full history, or an import of an existing WeeWX archive.
-- **Live dashboard** that updates itself: temperature and feels-like, wind
-  compass, rain (today, storm, month, year), pressure trend, sun and UV,
-  24-hour sparklines, and a daily forecast from
-  [Open-Meteo](https://open-meteo.com/) (free, no API key).
+- **Live dashboard** that updates itself: temperature, humidity and dew point,
+  feels-like (wind chill or heat index), wind compass, rain (today, storm,
+  month, year), pressure trend, sun and UV, and 24-hour charts.
+- **Forecast** from [Open-Meteo](https://open-meteo.com/) (free, no API key):
+  16 days on the dashboard and its own page, and any day hour by hour.
 - **Charts:** any date range with synchronised zoom, rain with a running total,
-  wind rose, calendar heatmap, and year-over-year comparisons.
-- **Almanac:** this day in past years, all-time and yearly records, and first
-  and last frost dates.
+  wind rose, calendar heatmap, year-over-year comparisons, and several
+  stations compared side by side.
+- **Almanac:** this day in past years, all-time and yearly records (including
+  wind chill, heat index and extra sensors), and first and last frost dates.
 - **Reports:** daily, monthly or yearly summaries (NOAA-style degree days and
   day counts) with CSV export.
 - **Growing:** growing degree days by crop, winter chill, and FAO-56 reference
   evapotranspiration against rainfall.
 - **Extra sensors:** extra temperature channels, soil, leaf wetness, air
-  quality, CO₂, lightning and leak detectors, each named and public or private.
+  quality, CO₂, lightning and leak detectors, each named and public or private;
+  piezo and tipping-bucket rain gauges; low-battery warnings.
 - **Data quality:** exclude a failing sensor's readings without losing them, or
   calibrate a sensor that reads too warm in the sun, fitted against a nearby
   airport station.
+- **Station log:** dated notes (moved, sensor replaced, maintenance…) marked on
+  the charts, so later readers know why the data changed.
 - **Multiple stations**, each public or private. Per-user display units.
-  Two-factor sign-in with passkeys.
+  Two-factor sign-in with passkeys. A user guide built into the app.
 - **Honest about gaps:** outages show as breaks, incomplete days never set
   records, and rain totals match the console.
 
@@ -40,6 +45,7 @@ good doing it, in light and dark.
 |---|---|
 | ![Charts](docs/screenshots/charts.png) | ![Almanac](docs/screenshots/almanac.png) |
 | ![Growing](docs/screenshots/growing.png) | ![Reports](docs/screenshots/reports.png) |
+| ![Forecast, hour by hour](docs/screenshots/forecast.png) | ![Dashboard, dark theme](docs/screenshots/dashboard-dark.png) |
 
 <p align="center"><img src="docs/screenshots/mobile.png" alt="Dashboard on a phone, dark theme" width="300"></p>
 
@@ -77,8 +83,26 @@ For example, to import your Ambient history:
 `docker compose exec web python manage.py import_ambient_stations --owner <you>`,
 then `… backfill_ambient <station-slug>`.
 
-To upgrade: `git pull && docker compose up -d --build`. Migrations and static
-files are handled for you.
+To upgrade, **back up the database first**: a migration can't be undone by
+going back to the old code, so the backup is your way back if anything goes
+wrong. With the MySQL compose file:
+
+```bash
+docker compose exec -T db sh -c 'mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" --single-transaction "$MYSQL_DATABASE"' > ws4free-backup.sql
+```
+
+(with PostgreSQL: `docker compose -f compose.postgres.yaml exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > ws4free-backup.sql`).
+Then:
+
+```bash
+git pull && docker compose up -d --build
+```
+
+Migrations and static files are handled for you: the `web` container applies
+migrations as it starts, the static files are built into the image, and the
+`scheduler` waits until the migrations are applied before running any jobs.
+The site is unavailable for a few seconds while `web` restarts. Check the
+[changelog](CHANGELOG.md)'s *Upgrading* notes for anything else a release needs.
 
 Put an HTTPS reverse proxy in front for anything reachable from the internet,
 and leave `/ingest/` reachable over plain HTTP (see
@@ -234,9 +258,10 @@ minutes for five years). `refresh_rollups --full` rebuilds everything on demand.
 ## Dashboard, visibility and units
 
 Each station has a live dashboard at `/stations/<slug>/`. It shows the current
-conditions, today's highs and lows, wind, rain (today, storm, month, year),
-the pressure trend, sun and UV, and 24-hour sparklines. It refreshes every 30
-seconds while the tab is visible.
+conditions and feels-like temperature, today's highs and lows, a 24-hour chart
+of temperature, dew point and humidity, wind, rain (today, storm, month,
+year), the pressure trend, sun and UV, the forecast, and any extra sensors. It
+refreshes every 30 seconds while the tab is visible.
 
 - **Public or private** is set per station in its **Settings**. Public stations
   can be viewed without signing in. Indoor readings, settings, the upload URL
@@ -252,7 +277,8 @@ seconds while the tab is visible.
 
 Each station's **Charts** tab (`/stations/<slug>/charts/`) has:
 
-- **History**: temperature (with dew point and the low–high range), humidity,
+- **History**: temperature (with dew point, the low–high range, and wind
+  chill or heat index while they apply), humidity,
   wind and gust, rain, pressure and solar radiation, for the last 24 hours,
   7 or 30 days, the year to date, the last year, everything, or any custom
   dates. The rain chart also shows, on its right-hand axis, the total
@@ -265,7 +291,13 @@ Each station's **Charts** tab (`/stations/<slug>/charts/`) has:
 - **Year over year**: cumulative rain, or smoothed daily highs or lows, one line
   per year.
 
-The range is part of the URL, so a view can be bookmarked or shared.
+The range is part of the URL, so a view can be bookmarked or shared. Entries
+from the station log are marked on the history charts, and the owner also sees
+periods when a sensor's battery was low.
+
+On a site with more than one station, **Compare** (in the header) puts up to
+six stations on shared charts, with a summary table and a "difference from"
+view for comparing microclimates.
 
 ## Almanac
 
@@ -276,7 +308,9 @@ Each station's **Almanac** tab has:
   the record high and low for the date.
 - **Records**, all-time or for one year: highest and lowest temperature (with
   the time), warmest night, coldest day, wettest day and month, heaviest rain
-  rate, strongest gust, pressure extremes, highest UV and the longest dry spell.
+  rate, strongest gust, lowest wind chill, highest heat index, pressure
+  extremes, highest UV, the longest dry spell, and extremes for extra sensors
+  (probe temperatures, particulates, CO₂, lightning).
 - **Frost dates**: the last spring and first fall frost (32 °F) or hard freeze
   (28 °F) of each year, the season between them, and averages.
 
@@ -329,15 +363,21 @@ Sensors fail: a humidity sensor sticks, a rain gauge clogs, a bird uses the
 anemometer. On a station's **Data quality** page the owner can exclude a
 period (or an ongoing problem) for chosen measurements. Excluded readings are
 set aside, not deleted, so charts, records, frost dates, reports and the
-dashboard ignore them. Removing the exclusion restores them exactly. Almanac
-records have an "Exclude these readings…" shortcut for when a record looks
-wrong.
+dashboard ignore them. Removing the exclusion restores them exactly. Any
+measurement can be excluded, extra sensors included. Almanac records have an
+"Exclude these readings…" shortcut for when a record looks wrong.
+
+The **Station log** (Manage → Station log) keeps dated notes about the station:
+moved, sensor replaced, maintenance, battery changed, outage. Each entry is
+public or private, and is marked on the Charts tab.
 
 ## Forecast
 
-The dashboard shows a daily forecast from [Open-Meteo](https://open-meteo.com/)
-(weather data licensed CC BY 4.0, credited on the page): no account or API key
-needed, but the server needs outbound HTTPS. It is fetched at most hourly per
+The dashboard shows a 16-day forecast from [Open-Meteo](https://open-meteo.com/)
+(weather data licensed CC BY 4.0, credited on the page): as many days as fit
+on the card, with every day on the station's forecast page
+(`/stations/<slug>/forecast/`), and any day hour by hour in a pop-up. No
+account or API key is needed, but the server needs outbound HTTPS. It is fetched at most hourly per
 station, when the dashboard is viewed, and only the station's location rounded
 to two decimals (about 1 km) is sent. Owners can turn it off per station; set
 `FORECAST_URL=` (empty) in `.env` to turn it off for the whole site. Open-Meteo's
@@ -425,6 +465,22 @@ Static files are served by the app itself through [WhiteNoise](https://whitenois
 compressed and with content-hashed names, so the proxy needs no `/static/` rule.
 **Re-run `collectstatic` after every upgrade**: pages fail to render if the static
 manifest is missing or out of date.
+
+### Upgrading without Docker
+
+```bash
+mysqldump -u ws4free -p --single-transaction ws4free > ws4free-backup.sql   # or pg_dump, or copy the SQLite file
+git pull
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py collectstatic --noinput
+# then restart Gunicorn (e.g. systemctl restart ws4free)
+```
+
+Keep that order: migrate before restarting so the new code never meets the old
+database, and `collectstatic` before restarting so no page asks for a static
+file that isn't there yet. The [changelog](CHANGELOG.md)'s *Upgrading* notes
+say if a release needs anything more.
 
 **Station uploads arrive over plain HTTP.** Weather station consoles can't use
 HTTPS for custom-server uploads and don't follow redirects. WS4Free exempts

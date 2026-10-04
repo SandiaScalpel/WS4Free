@@ -13,6 +13,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from . import agro, almanac, charts, dashboard, reports
+from . import forecast as forecasts
 from . import calibration, quality
 from . import compare as compare_data
 from . import help as help_docs
@@ -125,6 +126,54 @@ def station_live(request, slug):
         raise Http404
     context = dashboard.build(station, prefs_for_request(request), viewer=request.user)
     return render(request, 'weather/partials/live.html', context)
+
+
+def station_forecast(request, slug):
+    """Every day of the forecast (the dashboard's forecast card links here)."""
+    try:
+        station = _viewable_station(request, slug)
+    except _LoginRequired:
+        return redirect_to_login(request.get_full_path())
+    prefs = prefs_for_request(request)
+    today = timezone.now().astimezone(station.tzinfo).date()
+    days = forecasts.temperature_bars(forecasts.display(forecasts.current(station), prefs, today))
+    stations = list(visible_stations(request.user))
+    return render(request, 'weather/forecast.html', {
+        'station': station,
+        'other_stations': [s for s in stations if s.pk != station.pk],
+        'can_manage': request.user.is_authenticated and (request.user.is_staff or station.owner_id == request.user.pk),
+        'tab': 'forecast',
+        'forecast': days,
+    })
+
+
+def station_forecast_day(request, slug, date):
+    """One day of the forecast hour by hour: the pop-up dialog's contents (htmx)."""
+    try:
+        station = _viewable_station(request, slug)
+    except _LoginRequired:
+        raise Http404
+    try:
+        dt.date.fromisoformat(date)
+    except ValueError:
+        raise Http404
+    prefs = prefs_for_request(request)
+    now_local = timezone.now().astimezone(station.tzinfo)
+    found, hours = forecasts.day(station, date)
+    if found is None:
+        raise Http404
+    all_days = forecasts.current(station)            # already fresh: day() just refreshed it if due
+    dates = [d['date'] for d in all_days]
+    index = dates.index(date)
+    hours = forecasts.display_hours(hours, prefs, now_local.replace(tzinfo=None))
+    return render(request, 'weather/partials/forecast_day.html', {
+        'station': station,
+        'day': forecasts.display([found], prefs, now_local.date())[0],
+        'hours': hours,
+        'chart': forecasts.hours_chart(hours, prefs),
+        'prev_date': dates[index - 1] if index > 0 else None,
+        'next_date': dates[index + 1] if index + 1 < len(dates) else None,
+    })
 
 
 @require_POST

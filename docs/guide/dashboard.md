@@ -32,7 +32,13 @@ show that last reading, slightly dimmed.
 - **Forecast**: the next days from [Open-Meteo](https://open-meteo.com/): an
   icon for the expected weather, the high and low, and the chance of rain, plus
   the expected amount when there's more than a trace. As many days are shown
-  as fit the width of your screen. It updates hourly. The station owner can
+  as fit the width of your screen. **All 16 days** (or the **Forecast** heading)
+  opens the full forecast, with wind, gusts, UV and sunrise and sunset for each
+  day. Choose any day, on the card or the full forecast, to see it **hour by
+  hour** in a pop-up: temperature and chance-of-rain charts, then a row for
+  each hour with the sky, temperature, feels-like, rain, wind and humidity
+  (hours already past are greyed out; the arrows step to the next or previous
+  day). Times are the station's local time. It updates hourly. The station owner can
   turn it off under **Settings → Data sources**; it needs the station's
   latitude and longitude, and sends them to Open-Meteo rounded to about 1 km.
 - **More sensors**, when the station has any: extra temperature channels,

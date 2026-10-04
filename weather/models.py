@@ -500,7 +500,7 @@ class CalibratedValue(models.Model):
 
 
 class StationForecast(models.Model):
-    """The latest daily forecast for a station (weather.forecast), refreshed at most
+    """The latest daily and hourly forecast for a station (weather.forecast), refreshed at most
     hourly when the dashboard is viewed. Kept so a slow or unreachable forecast
     service never holds up the page: the last good forecast is shown instead."""
     station = models.OneToOneField(Station, on_delete=models.CASCADE, primary_key=True, related_name='forecast')
@@ -508,7 +508,10 @@ class StationForecast(models.Model):
     attempted_at = models.DateTimeField(null=True, blank=True)
     error = models.CharField(max_length=200, blank=True)
     days = models.JSONField(default=list, blank=True,
-                            help_text='[{date, code, high_c, low_c, rain_pct, rain_mm}, …], SI units.')
+                            help_text='[{date, code, high_c, low_c, rain_pct, rain_mm, wind_ms, …}, …], SI units.')
+    hours = models.JSONField(default=list, blank=True,
+                             help_text='[{time, code, temp_c, feels_c, humidity, rain_pct, rain_mm, …}, …], '
+                                       'station-local times, SI units.')
 
     def __str__(self):
         return f'Forecast for {self.station}'
