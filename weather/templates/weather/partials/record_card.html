@@ -1,0 +1,16 @@
+{% load weather_units %}{# One almanac record. Needs r, station, units, can_manage. #}
+    <article class="card p-5">
+      <h3 class="text-sm text-muted">{{ r.label }}</h3>
+      <p class="mt-1 text-3xl font-semibold tracking-tight">{{ r|record_value:units }}</p>
+      <p class="mt-2 text-sm">
+        <a class="no-underline" href="{% url 'weather:station-charts' station.slug %}?start={{ r.date|date:'Y-m-d' }}&end={% if r.end_date %}{{ r.end_date|date:'Y-m-d' }}{% else %}{{ r.date|date:'Y-m-d' }}{% endif %}">
+          {% if r.key == 'wet_month' %}{{ r.note }}{% elif r.end_date %}{{ r.date|date:"M j, Y" }} – {{ r.end_date|date:"M j, Y" }}{% else %}{{ r.date|date:"M j, Y" }}{% endif %}</a>
+        {% if r.time %}<span class="text-muted">at {{ r.time|date:"g:i A" }}</span>{% endif %}
+      </p>
+      {% if r.note and r.key != 'wet_month' %}<p class="mt-1 text-xs text-faint">{{ r.note }}</p>{% endif %}
+      {% if can_manage and r.key != 'dry_spell' %}
+      <p class="mt-3 border-t border-line pt-3 text-xs">
+        <a class="text-muted no-underline hover:text-ink" href="{% url 'weather:station-quality' station.slug %}?start={{ r.date|date:'Y-m-d' }}&end={% if r.end_date %}{{ r.end_date|date:'Y-m-d' }}{% else %}{{ r.date|date:'Y-m-d' }}{% endif %}&group={{ r|record_group }}&reason={{ r.label|urlencode }} looks wrong">Not right? Exclude these readings&hellip;</a>
+      </p>
+      {% endif %}
+    </article>

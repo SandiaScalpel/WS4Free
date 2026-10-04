@@ -21,7 +21,7 @@
       {% else %}<p class="mt-2 text-sm text-muted">No observations yet.</p>{% endif %}
     </div>
     <div class="card p-5">
-      <p class="eyebrow">Console PASSKEY</p>
+      <p class="eyebrow">{% if station.source == 'weewx' %}Uploader ID{% else %}Console PASSKEY{% endif %}</p>
       {% if station.push_passkey %}<p class="mt-2 text-sm"><span class="badge bg-good/15 text-good">Learned</span></p>
       <p class="mt-1 text-xs text-muted">Uploads from another device are rejected.</p>
       <form method="post" action="{% url 'weather:station-forget-passkey' station.slug %}" class="mt-2"
@@ -32,17 +32,41 @@
     </div>
   </div>
 
-  <section class="card mt-6 p-6" x-data="{ proto: 'ambient', copied: '' }">
+  {% if station.source == 'weewx' %}
+  <section class="card mt-6 p-6" x-data="{ copied: false }">
+    <h2 class="text-base font-semibold">WeeWX settings</h2>
+    <p class="mt-1 text-sm text-muted">WeeWX sends each archive record through its Wunderground uploader. In <code>weewx.conf</code>:</p>
+    <pre class="mt-4 overflow-x-auto rounded-lg bg-surface-2 p-4 text-sm leading-6"><code class="bg-transparent p-0">[StdRESTful]
+    [[Wunderground]]
+        enable = true
+        station = {{ station.slug }}
+        password = anything
+        server_url = http://{{ host }}{{ ambient_path }}</code></pre>
+    <div class="mt-2 flex flex-wrap items-center gap-2">
+      <button type="button" class="btn btn-ghost btn-sm" x-text="copied ? 'Copied' : 'Copy server_url'"
+              @click="navigator.clipboard.writeText('http://{{ host }}{{ ambient_path }}'); copied = true; setTimeout(() => copied = false, 1500)">Copy server_url</button>
+      <span class="text-xs text-faint">Restart WeeWX afterwards. Readings arrive with each archive record.</span>
+    </div>
+    <p class="mt-4 text-sm text-muted"><strong>History:</strong> import your existing WeeWX database with
+      <code class="break-all">python manage.py import_weewx {{ station.slug }} /path/to/weewx.sdb</code>
+      (see <a href="{% url 'weather:help-page' 'connecting' %}#importing-history-from-weewx">Importing history from WeeWX</a>).</p>
+    <p class="mt-3 text-xs text-faint">The path is this station's secret. Anyone who has it can upload readings to this station, so don't share it.</p>
+  </section>
+  {% else %}
+  <section class="card mt-6 p-6" x-data="{ proto: '{% if station.source == 'ecowitt' %}ecowitt{% else %}ambient{% endif %}', copied: '' }">
     <h2 class="text-base font-semibold">Console upload settings</h2>
-    <p class="mt-1 text-sm text-muted">In the <strong>awnet</strong> app: your console → <strong>Customized</strong> → enable, then enter:</p>
+    <p class="mt-1 text-sm text-muted">
+      {% if station.source == 'ecowitt' %}In <strong>WS View Plus</strong> (or the gateway's web page): <strong>Weather Services → Customized</strong> → enable, then enter:
+      {% elif station.source == 'ambient' %}In the <strong>awnet</strong> app: your console → <strong>Customized</strong> → enable, then enter:
+      {% else %}In your console's or software's custom-server (Wunderground-style) upload settings, enter:{% endif %}</p>
     <div class="mt-4 inline-flex rounded-lg border border-line p-0.5 text-sm">
-      <button type="button" class="rounded-md px-3 py-1.5" :class="proto === 'ambient' ? 'bg-accent-soft text-accent font-semibold' : 'text-muted'" @click="proto = 'ambient'">Ambient Weather protocol</button>
+      <button type="button" class="rounded-md px-3 py-1.5" :class="proto === 'ambient' ? 'bg-accent-soft text-accent font-semibold' : 'text-muted'" @click="proto = 'ambient'">{% if station.source == 'other' %}Wunderground / Ambient{% else %}Ambient Weather{% endif %} protocol</button>
       <button type="button" class="rounded-md px-3 py-1.5" :class="proto === 'ecowitt' ? 'bg-accent-soft text-accent font-semibold' : 'text-muted'" @click="proto = 'ecowitt'">Ecowitt protocol</button>
     </div>
     <dl class="mt-5 divide-y divide-line rounded-xl border border-line text-sm">
       <div class="grid gap-1 px-4 py-3 sm:grid-cols-[10rem_1fr]">
         <dt class="text-muted">Protocol type</dt>
-        <dd x-text="proto === 'ambient' ? 'Ambient Weather' : 'Ecowitt'"></dd>
+        <dd x-text="proto === 'ambient' ? '{% if station.source == 'other' %}Wunderground (GET){% else %}Ambient Weather{% endif %}' : 'Ecowitt'"></dd>
       </div>
       <div class="grid gap-1 px-4 py-3 sm:grid-cols-[10rem_1fr]">
         <dt class="text-muted">Server / hostname</dt>
@@ -66,10 +90,10 @@
       </div>
     </dl>
     <p class="mt-3 text-xs text-faint">The path is this station's secret. Anyone who has it can upload readings to this station, so don't share it.</p>
-    <p class="mt-3 text-sm text-muted">Using <strong>WeeWX</strong>? In its <code>[[Wunderground]]</code> section set
-      <code class="break-all">server_url = http://{{ host }}{{ ambient_path }}</code>.
-      <a href="{% url 'weather:help-page' 'connecting' %}#weewx">How to set up WeeWX</a></p>
+    <p class="mt-3 text-sm text-muted">Using <strong>WeeWX</strong> instead? Set <strong>Readings come from</strong> to WeeWX in
+      <a href="{% url 'weather:station-settings' station.slug %}">Settings</a> for its setup instructions.</p>
   </section>
+  {% endif %}
 
   <section class="card mt-6 p-6">
     <div class="flex items-center justify-between gap-4">

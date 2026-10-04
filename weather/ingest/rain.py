@@ -19,6 +19,11 @@ Order of preference for each row (prev → cur):
   3. otherwise, on a new console day, its daily total, i.e. the rain since
      midnight; within the same day with no previous counter, unknown (NULL).
 A delta faster than MAX_RATE_MMH over the gap is a counter glitch → NULL.
+
+Some sources report the rain of each record directly instead of running totals
+(a WeeWX archive's `rain` column). Those rows keep their stored `rain_mm`, are
+never measured against a counter, and break the counter chain on either side
+(`is_direct`).
 """
 import datetime as dt
 import logging
@@ -32,7 +37,8 @@ log = logging.getLogger(__name__)
 MAX_RATE_MMH = 400.0           # beyond any recorded 5-minute rainfall intensity
 _SLOP_MM = 0.01                # float noise from inch→mm conversion
 _MAX_COUNTER_GAP = dt.timedelta(days=1)
-_FIELDS = ('pk', 'timestamp', 'rain_counter_mm', 'rain_event_mm', 'rain_daily_mm', 'rain_mm')
+_FIELDS = ('pk', 'timestamp', 'source', 'rain_counter_mm', 'rain_event_mm', 'rain_daily_mm', 'rain_mm')
+DIRECT_RAIN_SOURCES = ('weewx_import',)
 
 
 def _delta(before, after):
@@ -78,6 +84,14 @@ def _has_counter(obs):
     return any(getattr(obs, f) is not None for f in RAIN_COUNTERS)
 
 
+def is_direct(obs):
+    """Rain for this row was reported directly, not as running totals. A downsampled
+    row with a rain total but no counters came from such rows."""
+    if obs.source in DIRECT_RAIN_SOURCES:
+        return True
+    return obs.source == 'downsampled' and obs.rain_mm is not None and not _has_counter(obs)
+
+
 def compute_rain_increments(station, since=None, until=None, batch_size=2000):
     """(Re)compute rain_mm for the station's rows in [since, until]. Returns the
     number of rows changed.
@@ -101,7 +115,9 @@ def compute_rain_increments(station, since=None, until=None, batch_size=2000):
     prev = None
     if since is not None:
         before = qs.filter(timestamp__lt=since).last()
-        if before is not None and not _has_counter(before):
+        if before is not None and is_direct(before):
+            before = None
+        elif before is not None and not _has_counter(before):
             if ExcludedValue.objects.filter(observation=before, field__in=RAIN_COUNTERS).exists():
                 before = None
             else:
@@ -123,6 +139,9 @@ def compute_rain_increments(station, since=None, until=None, batch_size=2000):
             break
         pending = []
         for obs in page:
+            if is_direct(obs) and obs.pk not in excluded_ids:
+                prev = None          # keeps its own rain_mm; counters before it don't carry over
+                continue
             if obs.pk in excluded_ids:
                 value, prev = None, None
             else:

@@ -29,7 +29,7 @@ class Command(BaseCommand):
         parser.add_argument('--station', help='Slug of a single station (default: all with polling enabled).')
 
     def handle(self, *args, station=None, **options):
-        stations = Station.objects.filter(ambient_api_enabled=True)
+        stations = Station.objects.filter(ambient_api_enabled=True, source=Station.SOURCE_AMBIENT, mac_address__isnull=False)
         if station:
             stations = stations.filter(slug=station)
         stations = list(stations)

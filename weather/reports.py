@@ -25,7 +25,7 @@ from .models import DailyRollup
 class Column:
     key: str
     label: str
-    quantity: str          # temp | temp_delta | rain | rate | speed | pressure | pct | count | wm2 | uv
+    quantity: str          # temp | temp_delta | rain | rate | speed | pressure | pct | count | wm2 | uv | pm | ppm | cb
     daily: bool = True     # meaningful in a day-by-day report
     help: str = ''
 
@@ -66,6 +66,45 @@ COMBINE = {
     'gust_max': 'max', 'pressure_mean': 'mean', 'pressure_min': 'min', 'pressure_max': 'max', 'solar_max': 'max',
     'uv_max': 'max', 'days_with_data': 'sum',
 }
+
+
+# Extra-sensor columns ('x:<key>:<stat>'), per sensor kind: (stat, label, quantity, combine).
+_SENSOR_STATS = {
+    'temperature': [('high', 'high', 'temp', 'max'), ('low', 'low', 'temp', 'min'), ('mean', 'mean', 'temp', 'mean')],
+    'soil_temp': [('high', 'high', 'temp', 'max'), ('low', 'low', 'temp', 'min'), ('mean', 'mean', 'temp', 'mean')],
+    'humidity': [('mean', 'mean', 'pct', 'mean')],
+    'soil_moisture': [('mean', 'mean', 'pct', 'mean')],
+    'leaf_wetness': [('mean', 'mean', 'pct', 'mean')],
+    'soil_tension': [('mean', 'mean', 'cb', 'mean')],
+    'pm25': [('mean', 'mean', 'pm', 'mean'), ('max', 'peak', 'pm', 'max')],
+    'pm10': [('mean', 'mean', 'pm', 'mean'), ('max', 'peak', 'pm', 'max')],
+    'co2': [('mean', 'mean', 'ppm', 'mean')],
+    'lightning': [('strikes', 'strikes', 'count', 'sum')],
+}
+_STAT_INDEX = {'mean': 0, 'low': 1, 'high': 2, 'max': 2, 'strikes': 2}   # rollup extra = [mean, min, max]
+
+
+def sensor_columns(station, include_private=False):
+    """Report columns for the station's extra sensors the viewer may see."""
+    from .sensors import station_sensors
+    out = []
+    for sensor, name in station_sensors(station, include_private):
+        for stat, label, quantity, combine in _SENSOR_STATS.get(sensor.kind, ()):
+            out.append(Column(f'x:{sensor.key}:{stat}', f'{name} {label}', quantity,
+                              help=f'{sensor.kind_label}: {label} of the readings each day'
+                                   + (' (lightning: strikes counted by the detector)' if stat == 'strikes' else '')))
+            COMBINE[f'x:{sensor.key}:{stat}'] = combine
+    return out
+
+
+def _sensor_values(r, columns, prefs):
+    values = {}
+    for c in columns:
+        _, key, stat = c.key.split(':', 2)
+        triple = (r.extra or {}).get(key)
+        value = triple[_STAT_INDEX[stat]] if triple else None
+        values[c.key] = prefs.t(value) if (value is not None and c.quantity == 'temp') else value
+    return values
 
 
 def _thresholds(prefs):
@@ -142,12 +181,14 @@ def auto_group(start, end):
     return 'day' if days <= 62 else 'month' if days <= 3 * 366 else 'year'
 
 
-def build(station, start, end, prefs, group='auto', column_keys=None):
+def build(station, start, end, prefs, group='auto', column_keys=None, include_private=False):
     group = group if group in ('day', 'month', 'year') else auto_group(start, end)
-    keys = [k for k in (column_keys or DEFAULT_COLUMNS) if k in BY_KEY]
-    columns = [BY_KEY[k] for k in keys if group != 'day' or BY_KEY[k].daily]
+    available = {**BY_KEY, **{c.key: c for c in sensor_columns(station, include_private)}}
+    keys = [k for k in (column_keys or DEFAULT_COLUMNS) if k in available]
+    columns = [available[k] for k in keys if group != 'day' or available[k].daily]
+    extra_columns = [c for c in columns if c.key.startswith('x:')]
     th = _thresholds(prefs)
-    by_date = {r.date: _day_values(r, prefs, th, station)
+    by_date = {r.date: {**_day_values(r, prefs, th, station), **_sensor_values(r, extra_columns, prefs)}
                for r in DailyRollup.objects.filter(station=station, date__gte=start, date__lte=end)}
 
     def period(d):
@@ -184,8 +225,10 @@ def build(station, start, end, prefs, group='auto', column_keys=None):
 
 def digits_for(column, prefs):
     q = column.quantity
-    if q in ('count', 'wm2', 'uv', 'pct'):
+    if q in ('count', 'wm2', 'uv', 'pct', 'ppm', 'cb'):
         return 0
+    if q == 'pm':
+        return 1
     if q in ('temp', 'temp_delta'):
         return 1 if q == 'temp' else 0
     return {'rain': prefs.digits['rain'], 'rate': prefs.digits['rain'], 'speed': prefs.digits['wind'],
@@ -196,7 +239,7 @@ def unit_for(column, prefs):
     labels = prefs.as_json()['labels']
     return {'temp': labels['temp'], 'temp_delta': f'{labels["temp"]}·days', 'rain': labels['rain'],
             'rate': f'{labels["rain"]}/h', 'speed': labels['wind'], 'pressure': labels['pressure'],
-            'pct': '%', 'count': '', 'wm2': 'W/m²', 'uv': ''}[column.quantity]   # counts are labelled "… days" already
+            'pct': '%', 'count': '', 'wm2': 'W/m²', 'uv': '', 'pm': 'µg/m³', 'ppm': 'ppm', 'cb': 'cb'}[column.quantity]   # counts are labelled "… days" already
 
 
 def to_csv(report):

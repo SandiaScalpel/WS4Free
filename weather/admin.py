@@ -7,13 +7,13 @@ from .models import DailyRollup, HourlyRollup, IngestCapture, LatestReading, Obs
 
 @admin.register(Station)
 class StationAdmin(admin.ModelAdmin):
-    list_display = ('name', 'owner', 'mac_address', 'timezone', 'is_public', 'ambient_api_enabled', 'latest_reading', 'setup_link')
-    list_filter = ('is_public', 'ambient_api_enabled')
+    list_display = ('name', 'owner', 'source', 'mac_address', 'timezone', 'is_public', 'ambient_api_enabled', 'latest_reading', 'setup_link')
+    list_filter = ('source', 'is_public', 'ambient_api_enabled')
     search_fields = ('name', 'mac_address', 'slug')
     readonly_fields = ('rollup_dirty_from', 'created_at', 'setup_link')
     actions = ['rotate_push_tokens']
     fieldsets = (
-        (None, {'fields': ('owner', 'name', 'slug', 'mac_address', 'is_public')}),
+        (None, {'fields': ('owner', 'name', 'slug', 'source', 'mac_address', 'is_public')}),
         ('Location', {'fields': ('timezone', 'latitude', 'longitude', 'elevation_m')}),
         ('Ingest', {'fields': ('setup_link', 'archive_interval_s', 'push_passkey', 'ambient_api_enabled')}),
         ('Status', {'fields': ('rollup_dirty_from', 'created_at')}),

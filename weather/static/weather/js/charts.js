@@ -240,6 +240,23 @@
             data: events.map((e) => ({ xAxis: e.t, name: e.kind })),
           },
         }] : []);
+        // Low-battery periods: a faint amber band on every chart (labelled on the first), and the
+        // sensors named in the tooltip while the pointer is inside one.
+        const battery = h.battery || [];
+        const warn = token('--ws-warn');
+        const batterySeries = (key) => (battery.length ? [{
+          name: '_battery', type: 'line', data: [], silent: true,
+          markArea: {
+            silent: true, animation: false,
+            itemStyle: { color: warn, opacity: 0.1 },
+            label: { show: false, position: 'insideTopLeft', color: warn, fontSize: 10, formatter: 'Low battery' },
+            // Only the first band on the top chart carries the label, so labels never pile up.
+            data: battery.map((b, i) => [{ xAxis: b.start, label: { show: key === keys[0] && i === 0 } }, { xAxis: b.end }]),
+          },
+        }] : []);
+        const batteryRows = (t) => battery.filter((b) => t >= b.start && t < b.end).map((b) =>
+          `<div style="margin-top:4px;padding-top:4px;border-top:1px solid ${c.line};max-width:260px;white-space:normal;color:${warn}">` +
+          `Low battery${b.intermittent ? ', on and off' : ''}: ${esc(b.names.join(', '))}</div>`).join('');
         // Near enough to the hovered bucket: within ~1 % of the visible range, never less than the bucket.
         const near = Math.max(step, span / 80);
         const eventRows = (t) => events.filter((e) => Math.abs(e.t - (t + step / 2)) <= near).map((e) =>
@@ -272,7 +289,7 @@
                 if (p.value[1] == null) return;
                 html += row(p.color, fmt(p.value[1], unitDigits), p.seriesName, p.seriesType === 'bar' ? 8 : 2);
               });
-              return html + eventRows(t);
+              return html + batteryRows(t) + eventRows(t);
             },
           }),
           dataZoom: [{ type: 'inside', filterMode: 'none', throttle: 50 }].concat(
@@ -283,7 +300,7 @@
               handleStyle: { color: c.surface, borderColor: c.muted }, moveHandleStyle: { color: c.line },
               textStyle: { color: c.muted, fontSize: 10 }, labelFormatter: (v) => tick.format(new Date(v)),
             }] : []),
-          series: series.concat(eventSeries(key)),
+          series: series.concat(batterySeries(key), eventSeries(key)),
         });
 
         const line = (name, key, color, area) => ({

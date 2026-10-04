@@ -15,18 +15,20 @@ WS4Free receives readings in up to three ways:
 
 A station has to exist in WS4Free before it can receive readings.
 
-- **Ambient Weather:** the server administrator runs
+- **In the app:** a site administrator chooses **Stations → Add a station** (or
+  **Add a station** on an empty site). Give it a name, choose where its readings
+  come from (an Ambient Weather console, an Ecowitt or Fine Offset console,
+  WeeWX, or other Wunderground-style uploads), and set the time zone, latitude
+  and longitude. Only Ambient stations need a MAC address, and only to use the
+  Ambient Weather API.
+- **Ambient Weather accounts:** the administrator can instead run
   `import_ambient_stations`, which adds every device on your ambientweather.net
   account with its name, location and time zone (see the README).
-- **Anything else:** the administrator adds it under **Admin → Stations** with a
-  name, time zone and MAC address. For an Ecowitt console, use the MAC shown in
-  the WS View app or on the console. A WeeWX station has no MAC that WS4Free
-  uses: enter any unique made-up one, such as `02:00:00:00:00:01`, and turn off
-  **Fill gaps from ambientweather.net** in the station's settings.
 
-Then, as the owner, open the station, choose **Manage**, and check its
-**Settings**: time zone, latitude, longitude and elevation matter for daily
-totals, sunrise and evapotranspiration.
+Then, as the owner, open the station and check **Manage → Settings**. **Readings
+come from** decides which setup steps the **Console & uploads** tab shows and
+which settings apply, and can be changed later. Time zone, latitude, longitude
+and elevation matter for daily totals, the forecast and evapotranspiration.
 
 ## Ambient Weather consoles
 
@@ -71,8 +73,8 @@ as well as) Weather Underground. In `weewx.conf`:
         server_url = http://your-ws4free-host/ingest/ambient/YOUR-STATION-CODE/
 ```
 
-Use the **Ambient** path from the station's **Console & uploads** tab after
-`http://your-ws4free-host`. `station` and `password` can be anything: WS4Free
+With **Readings come from** set to WeeWX, the station's **Console & uploads**
+tab shows this snippet with your server and path filled in. `station` and `password` can be anything: WS4Free
 remembers the `station` value from the first upload and rejects uploads with a
 different one. Restart WeeWX; readings arrive with each archive record (every
 5 minutes by default).
@@ -82,6 +84,34 @@ rain, solar radiation, UV, and its first soil moisture, soil temperature, leaf
 wetness and PM2.5 sensors. It doesn't send a storm or lifetime rain counter, so
 rain in the last few minutes before midnight can occasionally land in the next
 day.
+
+## Importing history from WeeWX
+
+If WeeWX has been recording your station, its archive database can be imported
+so WS4Free starts with your full history. The server administrator runs:
+
+```bash
+python manage.py import_weewx <station> /var/lib/weewx/weewx.sdb        # SQLite archive
+python manage.py import_weewx <station> mysql://user:password@host/weewx  # MySQL archive
+```
+
+- `--dry-run` shows how many records there are, the date range, and which
+  measurements will be imported, without changing anything.
+- Readings WS4Free already has are kept; the archive only fills the gaps, so
+  it's safe to re-run, and safe to import after uploads have started.
+- Records in any WeeWX unit system (US, METRIC or METRICWX) are converted.
+- Imported: temperature, humidity, dew point, pressure, wind, rain and rain
+  rate, solar radiation, UV, indoor temperature and humidity, extra
+  temperature and humidity channels, soil temperature, soil moisture (as soil
+  tension in centibars), PM2.5, PM10, CO₂, lightning and battery status. The
+  dry run lists any columns that aren't imported (for example Davis leaf
+  wetness).
+- The summaries are rebuilt in the background afterwards, a few minutes for
+  several years of data.
+
+With Docker, copy the file into the container first, for example
+`docker compose cp weewx.sdb web:/app/data/` and then
+`docker compose exec web python manage.py import_weewx <station> /app/data/weewx.sdb`.
 
 ## Plain HTTP for uploads
 

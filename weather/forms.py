@@ -14,14 +14,15 @@ from .units import FEET_PER_METER, default_prefs
 
 class StationSettingsForm(forms.ModelForm):
     """What a station owner can change from the app. Identity fields that history
-    depends on (slug, MAC, archive interval) are deliberately absent."""
+    depends on (slug, archive interval) are deliberately absent. Which settings
+    apply depends on where the readings come from (`source`)."""
     elevation = forms.FloatField(required=False, min_value=-500, max_value=30000)
     anemometer_height = forms.FloatField(min_value=0.5, max_value=100)
 
     class Meta:
         model = Station
         fields = ['name', 'place', 'is_public', 'timezone', 'latitude', 'longitude', 'ambient_api_enabled', 'rain_gauge',
-                  'forecast_enabled']
+                  'forecast_enabled', 'source', 'mac_address']
         labels = {
             'is_public': 'Public station',
             'ambient_api_enabled': 'Fill gaps from ambientweather.net',
@@ -59,6 +60,10 @@ class StationSettingsForm(forms.ModelForm):
         h = self.instance.anemometer_height_m or 2.0
         self.initial['anemometer_height'] = round(h * FEET_PER_METER, 1) if self.imperial else round(h, 1)
         self.fields['rain_gauge'].required = False
+        self.fields['source'].required = False
+        if self.instance.mac_address:
+            self.fields['mac_address'].disabled = True
+            self.fields['mac_address'].help_text = 'Fixed once set: polling and upload checks depend on it.'
         self.fields['forecast_enabled'].help_text = ('A daily forecast from Open-Meteo (free, no account needed). Sends the '
                                                      'station\'s location, rounded to about 1 km, to open-meteo.com.')
         # One name + public switch per extra sensor the station has reported.
@@ -80,6 +85,31 @@ class StationSettingsForm(forms.ModelForm):
     @staticmethod
     def timezone_choices():
         return sorted(available_timezones())
+
+    def clean_source(self):
+        return self.cleaned_data.get('source') or self.instance.source or Station.SOURCE_AMBIENT
+
+    def clean_mac_address(self):
+        from .models import normalize_mac
+        if self.instance.mac_address or self.add_prefix('mac_address') not in self.data:
+            return self.instance.mac_address          # fixed once set (polling and uploads depend on it)
+        raw = (self.cleaned_data.get('mac_address') or '').strip()
+        if not raw:
+            return None
+        mac = normalize_mac(raw)
+        if mac is None:
+            raise forms.ValidationError('Enter the MAC address as six hex pairs, e.g. 48:3F:DA:12:34:56.')
+        if Station.objects.filter(mac_address=mac).exclude(pk=self.instance.pk).exists():
+            raise forms.ValidationError('Another station already has this MAC address.')
+        return mac
+
+    def clean(self):
+        data = super().clean()
+        if (data.get('source') == Station.SOURCE_AMBIENT and data.get('ambient_api_enabled')
+                and not data.get('mac_address')):
+            self.add_error('mac_address', 'The Ambient Weather API needs the station\'s MAC address '
+                                          '(or turn off filling gaps from ambientweather.net).')
+        return data
 
     def clean_rain_gauge(self):
         return self.cleaned_data.get('rain_gauge') or self.instance.rain_gauge or 'auto'
@@ -141,6 +171,12 @@ class ExclusionForm(forms.Form):
     def __init__(self, *args, station, **kwargs):
         super().__init__(*args, **kwargs)
         self.station = station
+        # The station's extra sensors can be excluded too, each on its own.
+        from .models import EXTRA_PREFIX
+        from .sensors import station_sensors
+        extra = [(f'{EXTRA_PREFIX}{s.key}', name if name == s.default_label else f'{name} ({s.kind_label.lower()})')
+                 for s, name in station_sensors(station, include_private=True)]
+        self.fields['groups'].choices = list(self.fields['groups'].choices) + extra
 
     def full_clean(self):
         # Django makes naive form datetimes aware in the *current* time zone (the
@@ -306,3 +342,45 @@ class StationEventForm(forms.ModelForm):
             event.created_by = user
         event.save()
         return event
+
+
+class StationCreateForm(forms.ModelForm):
+    """A new station, added by a site administrator from the app."""
+
+    class Meta:
+        model = Station
+        fields = ['name', 'place', 'source', 'mac_address', 'timezone', 'latitude', 'longitude', 'is_public']
+        labels = {'is_public': 'Public station'}
+        help_texts = {
+            'name': 'Shown on the dashboard and in page titles.',
+            'place': 'Shown under the name, e.g. "Boulder, Colorado". Optional.',
+            'timezone': 'Defines the station\'s local day: daily totals, highs and lows.',
+            'latitude': 'Decimal degrees, north positive. Needed for the forecast and evapotranspiration.',
+            'longitude': 'Decimal degrees, east positive (the Americas are negative).',
+            'is_public': 'Anyone can view the dashboard and charts without signing in.',
+        }
+        widgets = {
+            'timezone': forms.TextInput(attrs={'list': 'tz-list', 'autocomplete': 'off', 'spellcheck': 'false'}),
+            'latitude': forms.NumberInput(attrs={'step': 'any'}),
+            'longitude': forms.NumberInput(attrs={'step': 'any'}),
+        }
+
+    def clean_mac_address(self):
+        from .models import normalize_mac
+        raw = (self.cleaned_data.get('mac_address') or '').strip()
+        if not raw:
+            return None
+        mac = normalize_mac(raw)
+        if mac is None:
+            raise forms.ValidationError('Enter the MAC address as six hex pairs, e.g. 48:3F:DA:12:34:56.')
+        if Station.objects.filter(mac_address=mac).exists():
+            raise forms.ValidationError('Another station already has this MAC address.')
+        return mac
+
+    def save(self, owner):
+        station = super().save(commit=False)
+        station.owner = owner
+        # The Ambient API can only be polled for an Ambient station with a MAC address.
+        station.ambient_api_enabled = station.source == Station.SOURCE_AMBIENT and bool(station.mac_address)
+        station.save()
+        return station

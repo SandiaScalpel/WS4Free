@@ -129,6 +129,9 @@ def record_value(record, prefs=None):
         'pressure': lambda: pressure(v, p),
         'uv': lambda: whole(v),
         'days': lambda: f'{v} days',
+        'pm': lambda: f'{v:.1f} µg/m³',
+        'ppm': lambda: f'{v:.0f} ppm',
+        'strikes': lambda: f'{v:.0f} strikes',
     }[record.kind]()
 
 
@@ -144,6 +147,8 @@ _RECORD_GROUP = {'temp': 'temp', 'rain': 'rain', 'rate': 'rain', 'speed': 'wind'
 @register.filter
 def record_group(record):
     """The data-quality group an almanac record comes from."""
+    if getattr(record, 'sensor', ''):
+        return f'x:{record.sensor}'
     return _RECORD_GROUP.get(record.kind, 'temp')
 
 

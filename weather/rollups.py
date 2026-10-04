@@ -35,7 +35,7 @@ from django.db.models.functions import Coalesce, Cos, Radians, Sin, TruncDay, Tr
 
 from .ingest.rain import compute_rain_increments
 from .models import DailyRollup, HourlyRollup, Observation, Station
-from .sensors import summarise
+from .sensors import low_batteries, summarise
 from .units import HEAT_INDEX, WIND_CHILL, apparent
 
 log = logging.getLogger(__name__)
@@ -144,24 +144,27 @@ def _grouped(station, period_expr, start, end):
 
 def _python_summaries(station, start, end, period_of):
     """{period: RollupFields kwargs} computed in Python for (start, end]: extra
-    sensors, lowest wind chill and highest heat index."""
+    sensors, lowest wind chill, highest heat index and low batteries."""
     keys = list(station.sensors or ())
-    columns = ['timestamp', 'interval_s', 'temp_c', 'humidity', 'wind_speed_ms'] + (['extra'] if keys else [])
+    columns = ['timestamp', 'interval_s', 'temp_c', 'humidity', 'wind_speed_ms', 'extra', 'source']
     rows = (Observation.objects.filter(station=station, timestamp__gt=start, timestamp__lte=end)
             .order_by('timestamp').values_list(*columns))
     sensor_rows, out = {}, {}
     for row in rows:
         period = period_of(row[0] - dt.timedelta(seconds=1))
-        values = out.setdefault(period, {'windchill_min_c': None, 'heatindex_max_c': None})
+        values = out.setdefault(period, {'windchill_min_c': None, 'heatindex_max_c': None, 'low_batteries': set()})
         feels, kind = apparent(row[2], row[3], row[4])
         if kind == WIND_CHILL and (values['windchill_min_c'] is None or feels < values['windchill_min_c']):
             values['windchill_min_c'] = feels
         elif kind == HEAT_INDEX and (values['heatindex_max_c'] is None or feels > values['heatindex_max_c']):
             values['heatindex_max_c'] = feels
-        if keys and row[5]:
-            sensor_rows.setdefault(period, []).append((row[1], row[5]))
+        if row[5]:
+            if keys:
+                sensor_rows.setdefault(period, []).append((row[1], row[5]))
+            values['low_batteries'].update(low_batteries(row[5], row[6]))
     for period, values in out.items():
         values['extra'] = summarise(sensor_rows[period], keys) if period in sensor_rows else {}
+        values['low_batteries'] = sorted(values['low_batteries'])
     return out
 
 

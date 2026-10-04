@@ -11,7 +11,8 @@ sends and shows the ones it recognises.
 |---|---|---|---|
 | Temperature and humidity channels | channels 1–10 | WH31 (channels 1–8), WH45 | |
 | Soil temperature | ✓ | WN34 probes | first four sensors |
-| Soil moisture | ✓ | WH51 | first four sensors |
+| Soil moisture | ✓ | WH51 | |
+| Soil tension (centibars) | ✓ | | first four soil moisture sensors |
 | Leaf wetness | ✓ | WN35 | first two sensors |
 | PM2.5 / PM10 | outdoor, indoor and AQIN | WH41, WH43, WH45 | PM2.5, PM10 |
 | CO₂ | ✓, AQIN | WH45, console | |
@@ -52,5 +53,29 @@ Each kind of sensor gets its own chart in History, with every channel as its
 own line, and its own columns in the CSV download. Lightning is shown as
 strikes per 5 minutes, hour or day.
 
-Extra sensors aren't yet included in the almanac, reports or data-quality
-exclusions.
+## In the almanac and reports
+
+- **Almanac → Records** has an **Extra sensors** section: the highest and lowest
+  reading of each extra temperature probe (with the time), the highest PM2.5,
+  PM10 and CO₂, and the most lightning strikes in a day. All time, or for one year.
+- **Reports → Columns** lists the station's extra sensors too: high, low and
+  mean for temperature probes, the mean of humidity, soil and leaf wetness, mean
+  and peak particulates, mean CO₂, and lightning strikes. They're in the CSV
+  download as well.
+
+Private sensors appear in both only for you.
+
+## When a sensor goes wrong
+
+Extra sensors can be excluded like the main ones: on **Data quality**, each
+sensor is listed with the other measurements. Its readings are set aside for
+the period (and from new uploads, for an ongoing problem), and come back
+exactly if you remove the exclusion. A record that looks wrong has a **Not
+right? Exclude these readings…** link that fills this in.
+
+## Batteries
+
+The owner sees a **Low battery** warning on the dashboard, and on the Charts
+tab the periods when any sensor reported a low battery are shaded, with the
+sensor named in the tooltip, so gaps or odd readings at those times are easy to
+explain. Visitors don't see either.

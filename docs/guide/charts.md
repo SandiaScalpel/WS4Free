@@ -27,6 +27,8 @@ humidity, wind speed and gust, rain, pressure and solar radiation, plus any
   right-hand scale, of the total since the start of the range.
 - **Gaps**: when the station was offline the lines break rather than drawing
   a straight line across the missing time.
+- **Low battery** periods are shaded in amber for the station's owner; hover
+  inside one to see which sensor it was.
 - **Station log** entries (a move, a new sensor…) show as dashed vertical
   markers; hover near one to read it. See [Settings and sharing](settings.md#station-log).
 - **Download CSV** saves the range in the units you're viewing.

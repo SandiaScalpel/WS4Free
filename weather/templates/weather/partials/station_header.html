@@ -4,7 +4,7 @@
   <h1 class="text-2xl font-bold">{{ station.name }}</h1>
   {% if station.is_public %}<span class="badge bg-good/15 text-good">Public</span>{% else %}<span class="badge bg-surface-2 text-muted">Private</span>{% endif %}
 </div>
-<p class="mt-1 text-sm text-muted">{{ station.mac_address }} · {{ station.timezone }}{% if station.latitude %} · {{ station.latitude|floatformat:4 }}, {{ station.longitude|floatformat:4 }}{% endif %}</p>
+<p class="mt-1 text-sm text-muted">{{ station.get_source_display }}{% if station.mac_address %} · {{ station.mac_address }}{% endif %} · {{ station.timezone }}{% if station.latitude %} · {{ station.latitude|floatformat:4 }}, {{ station.longitude|floatformat:4 }}{% endif %}</p>
 <nav class="mt-6 flex gap-1 overflow-x-auto border-b border-line whitespace-nowrap" aria-label="Station">
   <a href="{% url 'weather:station-settings' station.slug %}" class="-mb-px border-b-2 px-3 pb-2.5 text-sm font-medium no-underline {% if tab == 'settings' %}border-accent text-ink{% else %}border-transparent text-muted hover:text-ink{% endif %}" {% if tab == 'settings' %}aria-current="page"{% endif %}>Settings</a>
   <a href="{% url 'weather:station-setup' station.slug %}" class="-mb-px border-b-2 px-3 pb-2.5 text-sm font-medium no-underline {% if tab == 'console' %}border-accent text-ink{% else %}border-transparent text-muted hover:text-ink{% endif %}" {% if tab == 'console' %}aria-current="page"{% endif %}>Console &amp; uploads</a>

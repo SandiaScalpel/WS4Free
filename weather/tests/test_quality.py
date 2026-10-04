@@ -170,3 +170,61 @@ class PageTests(TestCase):
         self.assertFalse(Observation.objects.exclude(wind_speed_ms__isnull=True).exists())
         call_command('run_exclusion', e.pk, 'remove', stdout=StringIO())
         self.assertFalse(Observation.objects.filter(wind_speed_ms__isnull=True).exists())
+
+
+class ExtraSensorExclusionTests(TestCase):
+    """Exclusions of extra sensors (keys in Observation.extra), 'x:<key>' groups."""
+
+    def setUp(self):
+        import datetime as dt
+        from weather.models import Observation, Station
+        self.dt = dt
+        self.station = make_station(sensors={'temp1f': {'name': 'Greenhouse', 'public': True},
+                                             'soilhum1': {'name': '', 'public': True}})
+        t0 = dt.datetime(2025, 7, 1, 12, tzinfo=dt.UTC)
+        for i in range(4):
+            Observation.objects.create(station=self.station, timestamp=t0 + dt.timedelta(minutes=5 * i), source='api',
+                                       temp_c=20.0, extra={'temp1f': 60.0 + i, 'soilhum1': 30, 'battout': 1})
+        self.window = (t0 + dt.timedelta(minutes=2), t0 + dt.timedelta(minutes=10))   # rows 2 and 3 (5 and 10 min)
+        Station.objects.update(rollup_dirty_from=None)
+
+    def extras(self):
+        from weather.models import Observation
+        return [o.extra for o in Observation.objects.order_by('timestamp')]
+
+    def test_apply_and_remove_restores_exactly(self):
+        from weather import quality
+        from weather.models import DataExclusion, ExcludedValue
+        before = self.extras()
+        e = DataExclusion.objects.create(station=self.station, start=self.window[0], end=self.window[1], groups=['x:temp1f'])
+        self.assertEqual(e.fields(), ['x:temp1f'])
+        self.assertEqual(e.group_labels(), ['Greenhouse'])
+        self.assertEqual(quality.apply_exclusion(e), 2)
+        after = self.extras()
+        self.assertEqual(['temp1f' in x for x in after], [True, False, False, True])
+        self.assertTrue(all(x['soilhum1'] == 30 for x in after))                   # other keys untouched
+        self.assertEqual(sorted(ExcludedValue.objects.values_list('value', flat=True)), [61.0, 62.0])
+        quality.remove_exclusion(e)
+        self.assertEqual(self.extras(), before)
+        self.assertFalse(ExcludedValue.objects.exists())
+
+    def test_ongoing_exclusion_hits_new_uploads_and_live_tiles(self):
+        from weather import dashboard
+        from weather.ingest.parsers import Reading
+        from weather.ingest.store import record_push
+        from weather.models import DataExclusion, LatestReading, Observation
+        from weather.units import UnitPrefs
+        DataExclusion.objects.create(station=self.station, start=self.window[0], groups=['x:temp1f'], status='applied')
+        when = self.dt.datetime(2025, 7, 1, 13, tzinfo=self.dt.UTC)
+        record_push(self.station, Reading(when, {'temp_c': 21.0}, {'temp1f': 70.0, 'soilhum1': 29}), Observation.SOURCE_AMBIENT_PUSH)
+        self.assertNotIn('temp1f', Observation.objects.get(timestamp=when).extra)
+        self.assertEqual(LatestReading.objects.get().extra['temp1f'], 70.0)                      # stored as received
+        names = [i['name'] for g in dashboard.build(self.station, UnitPrefs.for_system('metric'), now=when)['sensor_groups']
+                 for i in g['items']]
+        self.assertEqual(names, ['Soil moisture 1'])
+
+    def test_form_offers_the_stations_sensors(self):
+        from weather.forms import ExclusionForm
+        choices = dict(ExclusionForm(station=self.station).fields['groups'].choices)
+        self.assertEqual(choices['x:temp1f'], 'Greenhouse (temperature)')
+        self.assertEqual(choices['x:soilhum1'], 'Soil moisture 1')

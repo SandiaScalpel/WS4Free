@@ -8,7 +8,10 @@
     {% else %}<p class="eyebrow">Dashboard</p>
     <h1 class="mt-1 text-3xl font-bold">Your weather, all of it.</h1>{% endif %}
   </div>
-  {% if stations|length > 1 %}<a href="{% url 'weather:compare' %}" class="btn btn-secondary">Compare stations</a>{% endif %}
+  <div class="flex flex-wrap gap-2">
+    {% if stations|length > 1 %}<a href="{% url 'weather:compare' %}" class="btn btn-secondary">Compare stations</a>{% endif %}
+    {% if is_list and user.is_staff %}<a href="{% url 'weather:station-create' %}" class="btn btn-secondary">Add a station</a>{% endif %}
+  </div>
 </div>
 
 {% if stations %}
@@ -51,14 +54,15 @@
       <span class="badge bg-accent-soft text-accent">No stations yet</span>
       <h2 class="mt-4 text-2xl font-bold">Connect a station to start recording.</h2>
       <p class="mt-3 max-w-prose text-muted">
-        WS4Free keeps every reading from your Ambient Weather or Ecowitt-compatible station:
+        WS4Free keeps every reading from your Ambient Weather, Ecowitt-compatible or WeeWX station:
         live conditions, full history, records and reports, on your own server.
       </p>
       <ol class="mt-6 space-y-4 text-sm">
-        <li class="flex gap-3"><span class="grid size-6 shrink-0 place-items-center rounded-full bg-accent text-xs font-bold text-accent-ink">1</span><span><span class="font-medium">Add your station</span><span class="block text-muted">Name, MAC address, location and time zone.</span></span></li>
-        <li class="flex gap-3"><span class="grid size-6 shrink-0 place-items-center rounded-full bg-surface-2 text-xs font-bold text-muted">2</span><span><span class="font-medium">Point the console here</span><span class="block text-muted">Custom-server upload in Ambient or Ecowitt format, or the Ambient API.</span></span></li>
-        <li class="flex gap-3"><span class="grid size-6 shrink-0 place-items-center rounded-full bg-surface-2 text-xs font-bold text-muted">3</span><span><span class="font-medium">Import your history</span><span class="block text-muted">Backfill past readings from ambientweather.net.</span></span></li>
+        <li class="flex gap-3"><span class="grid size-6 shrink-0 place-items-center rounded-full bg-accent text-xs font-bold text-accent-ink">1</span><span><span class="font-medium">Add your station</span><span class="block text-muted">Name, where its readings come from, location and time zone.</span></span></li>
+        <li class="flex gap-3"><span class="grid size-6 shrink-0 place-items-center rounded-full bg-surface-2 text-xs font-bold text-muted">2</span><span><span class="font-medium">Point the console here</span><span class="block text-muted">Custom-server upload in Ambient or Ecowitt format, WeeWX, or the Ambient API.</span></span></li>
+        <li class="flex gap-3"><span class="grid size-6 shrink-0 place-items-center rounded-full bg-surface-2 text-xs font-bold text-muted">3</span><span><span class="font-medium">Import your history</span><span class="block text-muted">From ambientweather.net or an existing WeeWX database.</span></span></li>
       </ol>
+      {% if user.is_staff %}<a href="{% url 'weather:station-create' %}" class="btn btn-primary mt-6">Add a station</a>{% endif %}
     </div>
 
     {# A preview of the live tiles, greyed out until data arrives. #}

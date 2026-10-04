@@ -7,6 +7,40 @@ each release for anything you need to do beyond the usual steps in the README.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [Semantic Versioning](https://semver.org/).
 
+## 0.9.0 — 2026-10-04
+
+### Added
+
+- **Import a WeeWX archive** (`manage.py import_weewx <station> <weewx.sdb or
+  mysql://…>`): your full WeeWX history, in any WeeWX unit system, including
+  extra sensors and battery status. Only fills gaps, so it's safe to re-run;
+  `--dry-run` shows what would be imported.
+- **Where a station's readings come from** (Settings → Data sources): Ambient
+  Weather, Ecowitt / Fine Offset, WeeWX, or other Wunderground-style uploads.
+  The Console & uploads tab shows the matching setup steps (a ready-made
+  `weewx.conf` snippet for WeeWX), and only the settings that apply are shown.
+  The MAC address is now only needed for the Ambient Weather API.
+- **Add a station** in the app (Stations → Add a station, for site
+  administrators), instead of the Django admin.
+- **Extra sensors everywhere**: almanac records (highest and lowest probe
+  temperatures, peak particulates and CO₂, most lightning in a day), report
+  columns, and data-quality exclusions for any extra sensor.
+- **Soil tension** sensors (centibars): Ambient `soiltens1`–`4`, and WeeWX soil
+  moisture.
+- **Low-battery periods** are shaded on the Charts tab for the station's owner,
+  with the sensor named in the tooltip.
+
+### Fixed
+
+- Docker: the first `docker compose up` no longer prints a misleading "pull
+  access denied for ws4free" error. The scheduler service now builds the shared
+  image like the web service, instead of trying to pull it from a registry.
+
+### Upgrading
+
+- Run `migrate`. Each station's summaries are then rebuilt once in the
+  background to add the low-battery periods (a few minutes for several years).
+
 ## 0.8.0 — 2026-10-04
 
 ### Added

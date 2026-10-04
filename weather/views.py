@@ -16,7 +16,7 @@ from . import agro, almanac, charts, dashboard, reports
 from . import calibration, quality
 from . import compare as compare_data
 from . import help as help_docs
-from .forms import CalibrationForm, ExclusionForm, SiteSettingsForm, StationEventForm, StationSettingsForm
+from .forms import CalibrationForm, ExclusionForm, StationCreateForm, SiteSettingsForm, StationEventForm, StationSettingsForm
 from .ingest.store import mark_dirty
 from .models import DailyRollup, DataExclusion, Observation, SiteSettings, Station, StationEvent, TempCalibration
 from .units import SYSTEMS, UNITS_COOKIE, prefs_for_request
@@ -70,6 +70,21 @@ def station_list(request):
     """Every station the viewer can see (header 'Stations' link)."""
     stations = list(visible_stations(request.user).select_related('latest'))
     return render(request, 'weather/home.html', {'stations': stations, 'is_list': True})
+
+
+@login_required
+def station_create(request):
+    """Add a station (site administrators)."""
+    if not request.user.is_staff:
+        raise Http404
+    form = StationCreateForm(request.POST or None, initial={'source': Station.SOURCE_AMBIENT, 'timezone': settings.TIME_ZONE})
+    if request.method == 'POST' and form.is_valid():
+        station = form.save(request.user)
+        messages.success(request, f'{station.name} added. Now point its console (or WeeWX) at WS4Free.')
+        return redirect('weather:station-setup', slug=station.slug)
+    return render(request, 'weather/station_create.html', {
+        'form': form, 'timezones': StationSettingsForm.timezone_choices(),
+    })
 
 
 def charts_home(request):
@@ -328,6 +343,8 @@ def station_almanac(request, slug):
         'is_today': picked.month == today.month and picked.day == today.day,
         'day': almanac.on_this_day(station, picked.month, picked.day),
         'records': almanac.records(station, record_year),
+        'sensor_records': almanac.sensor_records(station, record_year, include_private=request.user.is_authenticated and (
+            request.user.is_staff or station.owner_id == request.user.pk)),
         'record_scope': record_year or 'all',
         'years': years,
         'seasons': list(reversed(seasons)),
@@ -376,8 +393,9 @@ def station_quality(request, slug):
             initial['end'] = dt.datetime.combine(day_end + dt.timedelta(days=1), dt.time(), tzinfo=tz)
         except (KeyError, ValueError):
             pass
-        if request.GET.get('group') in quality.EXCLUSION_GROUPS:
-            initial['groups'] = [request.GET['group']]
+        group = request.GET.get('group', '')
+        if group in quality.EXCLUSION_GROUPS or (group.startswith('x:') and group[2:] in (station.sensors or {})):
+            initial['groups'] = [group]
         if request.GET.get('reason'):
             initial['reason'] = request.GET['reason'][:200]
         form = ExclusionForm(initial=initial, station=station)
@@ -473,7 +491,8 @@ def station_reports(request, slug):
     preset, start, end = _report_range(request, station)
     group = request.GET.get('group', 'auto')
     columns = request.GET.getlist('col') or reports.DEFAULT_COLUMNS
-    report = reports.build(station, start, end, prefs, group, columns)
+    owner = request.user.is_authenticated and (request.user.is_staff or station.owner_id == request.user.pk)
+    report = reports.build(station, start, end, prefs, group, columns, include_private=owner)
     if request.GET.get('format') == 'csv':
         response = HttpResponse(reports.to_csv(report), content_type='text/csv; charset=utf-8')
         response['Content-Disposition'] = (f'attachment; filename="{station.slug}-{report.group}-report-'
@@ -494,6 +513,7 @@ def station_reports(request, slug):
         'summary': [(v, reports.digits_for(c, prefs)) for v, c in zip(report.summary, report.columns)],
         'headers': [(c, reports.unit_for(c, prefs)) for c in report.columns],
         'all_columns': reports.COLUMNS,
+        'sensor_columns': reports.sensor_columns(station, include_private=owner),
         'selected': set(columns),
         'presets': REPORT_PRESETS,
         'preset': preset,

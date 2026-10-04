@@ -36,6 +36,8 @@ class Command(BaseCommand):
             st = Station.objects.get(slug=station)
         except Station.DoesNotExist:
             raise CommandError(f'No station with slug {station!r}.')
+        if not st.mac_address:
+            raise CommandError(f'{st} has no MAC address; the Ambient Weather API identifies stations by MAC.')
         if resume:
             oldest = Observation.objects.filter(station=st).order_by('timestamp').values_list('timestamp', flat=True).first()
             if oldest:

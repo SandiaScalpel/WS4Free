@@ -16,9 +16,13 @@ Owners reach these from **Manage** on any station page.
   your units.
 - **Wind sensor height**: used to adjust wind to the standard 2 m height for
   evapotranspiration.
-- **Data sources**: whether to fill gaps from ambientweather.net (Ambient
-  stations), which **rain sensor** to record when the console has two, and
-  whether to show the **forecast** on the dashboard.
+- **Data sources**: **Readings come from** (an Ambient Weather console, an
+  Ecowitt or Fine Offset console, WeeWX, or other Wunderground-style uploads),
+  which decides the setup steps on **Console & uploads** and which of the
+  following apply: the MAC address and filling gaps from ambientweather.net
+  (Ambient stations), which **rain sensor** to record when the console has two
+  (Ecowitt and others), and whether to show the **forecast** on the dashboard.
+  The MAC address can be entered once, if the station doesn't have one yet.
 - **Extra sensors**: names and public switches; see
   [Extra sensors](extra-sensors.md).
 

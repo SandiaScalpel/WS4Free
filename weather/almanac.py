@@ -29,12 +29,13 @@ MEASURABLE_RAIN_MM = 0.254      # 0.01 in, the gauge's resolution
 class Record:
     key: str
     label: str
-    kind: str                     # temp | rain | rate | speed | pressure | uv | days
+    kind: str                     # temp | rain | rate | speed | pressure | uv | days | pm | ppm | strikes
     value: float
     date: dt.date
     end_date: dt.date = None      # for spans (wettest month, dry spell)
     time: dt.datetime = None      # when the extreme was observed, if known
     note: str = ''
+    sensor: str = ''              # extra sensor's upload key (sensor records only)
 
 
 def _local_day_bounds(station, day):
@@ -317,3 +318,57 @@ def frost_summary(seasons):
         'spring': stats([s.last_spring for s in seasons if s.last_spring and not s.spring_uncertain]),
         'fall': stats([s.first_fall for s in seasons if s.first_fall and not s.fall_uncertain]),
     }
+
+
+# Extra-sensor records, per sensor kind: (key suffix, label, record kind, rollup index, lowest).
+# Rollup extra values are [mean, min, max] per day (weather.rollups).
+_SENSOR_RECORDS = {
+    'temperature': [('high', 'highest', 'temp', 2, False), ('low', 'lowest', 'temp', 1, True)],
+    'soil_temp': [('high', 'highest', 'temp', 2, False), ('low', 'lowest', 'temp', 1, True)],
+    'pm25': [('high', 'highest', 'pm', 2, False)],
+    'pm10': [('high', 'highest', 'pm', 2, False)],
+    'co2': [('high', 'highest', 'ppm', 2, False)],
+    'lightning': [('day', 'most strikes in a day', 'strikes', 2, False)],
+}
+
+
+def _sensor_time(station, day, key, lowest):
+    """When on `day` the sensor's extreme reading was (scans that day's readings)."""
+    from .sensors import describe
+    sensor = describe(key)
+    start, end = _local_day_bounds(station, day)
+    best = None
+    for ts, extra in (Observation.objects.filter(station=station, timestamp__gt=start, timestamp__lte=end,
+                                                 extra__has_key=key).values_list('timestamp', 'extra')):
+        value = sensor.si(extra.get(key)) if sensor else None
+        if value is not None and (best is None or (value < best[0] if lowest else value > best[0])):
+            best = (value, ts)
+    return best[1] if best else None
+
+
+def sensor_records(station, year=None, include_private=False):
+    """Records for the station's extra sensors the viewer may see, from the daily summaries."""
+    from .sensors import station_sensors
+    sensors = [(s, n) for s, n in station_sensors(station, include_private) if s.kind in _SENSOR_RECORDS]
+    if not sensors:
+        return []
+    days = DailyRollup.objects.filter(station=station).exclude(extra={})
+    if year:
+        days = days.filter(date__year=year)
+    days = list(days.values_list('date', 'extra'))
+    out = []
+    for sensor, name in sensors:
+        for suffix, label, kind, index, lowest in _SENSOR_RECORDS[sensor.kind]:
+            best = None
+            for date, extra in days:
+                triple = extra.get(sensor.key)
+                if not triple or triple[index] is None:
+                    continue
+                if best is None or (triple[index] < best[1] if lowest else triple[index] > best[1]):
+                    best = (date, triple[index])
+            if best is None:
+                continue
+            when = None if kind == 'strikes' else _sensor_time(station, best[0], sensor.key, lowest)
+            out.append(Record(f'x:{sensor.key}:{suffix}', f'{name}: {label}', kind, best[1], best[0], time=when,
+                              note=sensor.kind_label, sensor=sensor.key))
+    return out

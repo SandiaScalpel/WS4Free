@@ -40,9 +40,20 @@ class Station(models.Model):
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='stations')
     name = models.CharField(max_length=100)
     slug = models.SlugField(max_length=100, unique=True, blank=True)
+    SOURCE_AMBIENT, SOURCE_ECOWITT, SOURCE_WEEWX, SOURCE_OTHER = 'ambient', 'ecowitt', 'weewx', 'other'
+    SOURCE_CHOICES = [
+        (SOURCE_AMBIENT, 'Ambient Weather console'),
+        (SOURCE_ECOWITT, 'Ecowitt or Fine Offset console'),
+        (SOURCE_WEEWX, 'WeeWX'),
+        (SOURCE_OTHER, 'Other (Wunderground-style uploads)'),
+    ]
+    source = models.CharField(
+        'readings come from', max_length=10, choices=SOURCE_CHOICES, default=SOURCE_AMBIENT,
+        help_text='Decides which setup instructions and settings apply. Uploads in any supported format are accepted.')
     mac_address = models.CharField(
-        'MAC address', max_length=17, unique=True, validators=[validate_mac],
-        help_text='As shown on the console or ambientweather.net, e.g. 48:3F:DA:12:34:56.',
+        'MAC address', max_length=17, unique=True, null=True, blank=True, validators=[validate_mac],
+        help_text='As shown on the console or ambientweather.net, e.g. 48:3F:DA:12:34:56. '
+                  'Needed for the Ambient Weather API; optional otherwise.',
     )
     place = models.CharField(max_length=100, blank=True, help_text='Shown under the name, e.g. "Boulder, Colorado".')
     timezone = models.CharField(max_length=64, default='UTC', validators=[validate_timezone],
@@ -102,7 +113,7 @@ class Station(models.Model):
         return self.name
 
     def save(self, *args, **kwargs):
-        self.mac_address = normalize_mac(self.mac_address) or self.mac_address
+        self.mac_address = normalize_mac(self.mac_address) or self.mac_address or None
         if not self.slug:
             base = slugify(self.name)[:90] or 'station'
             slug, n = base, 2
@@ -115,6 +126,11 @@ class Station(models.Model):
     def tzinfo(self):
         return ZoneInfo(self.timezone)
 
+    @property
+    def uses_ambient_api(self):
+        """Whether the Ambient Weather API applies (gap-filling, history import)."""
+        return self.source == self.SOURCE_AMBIENT and bool(self.mac_address)
+
     def rotate_push_token(self):
         self.push_token = _new_push_token()
         self.push_passkey = ''
@@ -123,6 +139,8 @@ class Station(models.Model):
     def passkey_candidates(self):
         """Values a console might legitimately send as PASSKEY for this station:
         the MAC in common spellings and the MD5 of it (Ecowitt protocol)."""
+        if not self.mac_address:
+            return set()
         mac = self.mac_address.upper()
         plain = mac.replace(':', '')
         spellings = {mac, plain, mac.replace(':', '-')}
@@ -147,12 +165,14 @@ class Observation(models.Model):
     SOURCE_API = 'api'
     SOURCE_BACKFILL = 'backfill'
     SOURCE_DOWNSAMPLED = 'downsampled'
+    SOURCE_WEEWX_IMPORT = 'weewx_import'
     SOURCE_CHOICES = [
         (SOURCE_AMBIENT_PUSH, 'Ambient push'),
         (SOURCE_ECOWITT_PUSH, 'Ecowitt push'),
         (SOURCE_API, 'Ambient API poll'),
         (SOURCE_BACKFILL, 'Ambient API backfill'),
         (SOURCE_DOWNSAMPLED, 'Downsampled'),
+        (SOURCE_WEEWX_IMPORT, 'WeeWX import'),
     ]
 
     station = models.ForeignKey(Station, on_delete=models.CASCADE, related_name='observations')
@@ -317,6 +337,8 @@ class RollupFields(models.Model):
     # lowest wind chill (≤ 50 °F, wind ≥ 3 mph) and highest heat index (≥ 80 °F).
     windchill_min_c = models.FloatField(null=True, blank=True)
     heatindex_max_c = models.FloatField(null=True, blank=True)
+    low_batteries = models.JSONField(default=list, blank=True,
+                                     help_text='Sensors whose battery the console reported low during the period.')
     extra = models.JSONField(default=dict, blank=True,
                              help_text='Extra sensors: {upload key: [mean, min, max]} in SI units.')
 
@@ -353,6 +375,9 @@ class DailyRollup(RollupFields):
 # Measurement groups an exclusion can cover, and the Observation columns each one
 # nulls. Dew point depends on both temperature and humidity, so either removes it;
 # rain removes the counters too, or the rain pass would rebuild rain_mm from them.
+# Exclusion groups for extra sensors are 'x:<upload key>' (a key in Observation.extra).
+EXTRA_PREFIX = 'x:'
+
 EXCLUSION_GROUPS = {
     'temp': ('Outdoor temperature', ('temp_c', 'temp_min_c', 'temp_max_c', 'dewpoint_c')),
     'humidity': ('Outdoor humidity', ('humidity', 'humidity_min', 'humidity_max', 'dewpoint_c')),
@@ -387,15 +412,27 @@ class DataExclusion(models.Model):
         return f'{self.station}: {", ".join(self.groups)} from {self.start:%Y-%m-%d}'
 
     def fields(self):
+        """Observation columns, plus 'x:<key>' for each extra sensor (a key in `extra`)."""
         cols = []
         for key in self.groups:
-            for col in EXCLUSION_GROUPS.get(key, ('', ()))[1]:
+            for col in (EXCLUSION_GROUPS[key][1] if key in EXCLUSION_GROUPS else
+                        (key,) if key.startswith(EXTRA_PREFIX) else ()):
                 if col not in cols:
                     cols.append(col)
         return cols
 
     def group_labels(self):
-        return [EXCLUSION_GROUPS[g][0] for g in self.groups if g in EXCLUSION_GROUPS]
+        from .sensors import describe
+        labels = []
+        for g in self.groups:
+            if g in EXCLUSION_GROUPS:
+                labels.append(EXCLUSION_GROUPS[g][0])
+            elif g.startswith(EXTRA_PREFIX):
+                key = g[len(EXTRA_PREFIX):]
+                sensor = describe(key)
+                name = (self.station.sensors.get(key) or {}).get('name') or (sensor.default_label if sensor else key)
+                labels.append(name)
+        return labels
 
 
 class ExcludedValue(models.Model):

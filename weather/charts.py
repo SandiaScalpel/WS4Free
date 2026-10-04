@@ -15,7 +15,7 @@ from django.db.models import Case, F, FloatField, IntegerField, Min, Sum, When
 from django.db.models.functions import Floor, Mod
 
 from .models import DailyRollup, HourlyRollup, Observation, StationEvent
-from .sensors import station_sensors
+from .sensors import low_batteries, station_sensors
 from .units import HEAT_INDEX, WIND_CHILL, apparent
 
 RAW_MAX = dt.timedelta(days=3)
@@ -78,7 +78,7 @@ def _apparent_pair(temp_c, humidity, wind_ms):
 
 
 # Extra-sensor values in the viewer's units, by unit kind (weather.sensors).
-SENSOR_DIGITS = {'temp': 1, 'pct': 0, 'pm': 1, 'ppm': 0, 'count': 0}
+SENSOR_DIGITS = {'temp': 1, 'pct': 0, 'cb': 0, 'pm': 1, 'ppm': 0, 'count': 0}
 SENSOR_LINES_PER_CHART = 8      # the categorical palette's size; more channels → another chart
 
 
@@ -107,7 +107,7 @@ def _strikes(times_ms, counters, tzinfo):
 
 def _sensor_charts(sensors, prefs):
     """Chart definitions for the History section: one chart per kind (split past 8 channels)."""
-    units = {'temp': prefs.label('temp'), 'pct': '%', 'pm': 'µg/m³', 'ppm': 'ppm', 'count': 'strikes'}
+    units = {'temp': prefs.label('temp'), 'pct': '%', 'cb': 'cb', 'pm': 'µg/m³', 'ppm': 'ppm', 'count': 'strikes'}
     by_kind = {}
     for sensor, name in sensors:
         by_kind.setdefault(sensor.kind, []).append((sensor, name))
@@ -145,14 +145,16 @@ def history(station, start, end, prefs, include_private=False):
         qs = (Observation.objects.filter(station=station, timestamp__gt=start, timestamp__lte=end)
               .order_by('timestamp').values_list('timestamp', 'interval_s', 'temp_c', 'temp_min_c', 'temp_max_c',
                                                 'dewpoint_c', 'humidity', 'wind_speed_ms', 'wind_gust_ms', 'rain_mm',
-                                                'pressure_rel_hpa', 'solar_wm2', 'uv_index', 'extra'))
+                                                'pressure_rel_hpa', 'solar_wm2', 'uv_index', 'extra', 'source'))
+        raw = list(qs)
+        battery = [(int((r[0] - dt.timedelta(seconds=r[1])).timestamp() * 1000), low_batteries(r[13], r[14])) for r in raw]
         rows = [[int((ts - dt.timedelta(seconds=iv)).timestamp() * 1000),
                  _r(prefs.t(t), d['temp']), _r(prefs.t(tmin), d['temp']), _r(prefs.t(tmax), d['temp']),
                  _r(prefs.t(dp), d['temp']), _r(h, 0), _r(prefs.w(w), 1), _r(prefs.w(g), 1),
                  _r(prefs.r(rain), d['rain'] + 1), _r(prefs.p(p), d['pressure'] + 1), _r(sol, 0), _r(uv, 1)]
                 + [_r(prefs.t(v), d['temp']) for v in _apparent_pair(t, h, w)]
                 + [_sensor_display(s, s.si((extra or {}).get(s.key)), prefs) for s, _ in sensors]
-                for ts, iv, t, tmin, tmax, dp, h, w, g, rain, p, sol, uv, extra in qs]
+                for ts, iv, t, tmin, tmax, dp, h, w, g, rain, p, sol, uv, extra, _src in raw]
         step_ms = 300_000
     else:
         model, key = (HourlyRollup, 'period_start') if res == 'hourly' else (DailyRollup, 'date')
@@ -162,12 +164,13 @@ def history(station, start, end, prefs, include_private=False):
         else:
             tz = station.tzinfo
             qs = qs.filter(date__gte=start.astimezone(tz).date(), date__lte=(end - dt.timedelta(seconds=1)).astimezone(tz).date())
-        rows = []
+        rows, battery = [], []
         for r in qs.order_by(key):
             if res == 'hourly':
                 ms = int(r.period_start.timestamp() * 1000)
             else:
                 ms = int(dt.datetime.combine(r.date, dt.time(), tzinfo=station.tzinfo).timestamp() * 1000)
+            battery.append((ms, r.low_batteries or []))
             temp_ok = res == 'hourly' or r.temp_coverage >= MIN_DAILY_COVERAGE
             rain_ok = res == 'hourly' or rain_known(r.rain_mm, r.rain_coverage, MIN_DAILY_COVERAGE)
             rows.append([
@@ -206,7 +209,32 @@ def history(station, start, end, prefs, include_private=False):
         'end': int(end.timestamp() * 1000),
         'series': dict(zip(names, columns)),
         'sensor_charts': _sensor_charts(sensors, prefs),
+        # Low-battery periods are for the owner, like the dashboard's battery warning.
+        'battery': battery_periods(battery, step_ms) if include_private else [],
     }
+
+
+BATTERY_BRIDGE_MS = 86_400_000    # a weak battery reads low at night and recovers in the afternoon sun
+
+
+def battery_periods(buckets, step_ms):
+    """Merge buckets that reported a low battery into periods:
+    [{'start': ms, 'end': ms, 'names': [...], 'intermittent': bool}]. Low readings
+    less than a day apart belong to the same period (marked intermittent when the
+    battery read OK in between); a longer gap ends it."""
+    periods = []
+    for ms, names in buckets:
+        if not names:
+            continue
+        last = periods[-1] if periods else None
+        if last and ms - last['end'] <= max(step_ms, BATTERY_BRIDGE_MS):
+            if ms > last['end']:
+                last['intermittent'] = True
+            last['end'] = ms + step_ms
+            last['names'] = sorted(set(last['names']) | set(names))
+        else:
+            periods.append({'start': ms, 'end': ms + step_ms, 'names': list(names), 'intermittent': False})
+    return periods
 
 
 def history_csv(station, start, end, prefs, include_private=False):

@@ -12,8 +12,8 @@ good doing it, in light and dark.
 ## Features
 
 - **Ingest:** the console's custom-server upload (Ambient, Wunderground and
-  Ecowitt formats), plus the Ambient Weather API to fill gaps and import your
-  full history.
+  Ecowitt formats, and WeeWX), plus the Ambient Weather API to fill gaps and
+  import your full history, or an import of an existing WeeWX archive.
 - **Live dashboard** that updates itself: temperature and feels-like, wind
   compass, rain (today, storm, month, year), pressure trend, sun and UV,
   24-hour sparklines, and a daily forecast from
@@ -154,14 +154,15 @@ its name, location and time zone:
 python manage.py import_ambient_stations --owner <your-username>
 ```
 
-Otherwise add the station in the admin (`/admin/` → Stations) with its MAC
-address and time zone. For a WeeWX station, enter any unique made-up MAC (for
-example `02:00:00:00:00:01`) and see the user guide's
-[Connecting a station](docs/guide/connecting.md#weewx).
+Otherwise sign in as a staff user and choose **Stations → Add a station** (or
+**Add a station** on an empty site): a name, where its readings come from
+(Ambient Weather, Ecowitt / Fine Offset, WeeWX or other Wunderground-style
+uploads), time zone and location. Only Ambient stations need a MAC address,
+and only for the Ambient Weather API.
 
 ### 2. Point the console at WS4Free
 
-Open the station's **Console setup** page (linked from the dashboard). It shows
+Open the station's **Manage → Console & uploads** tab. It shows
 the exact server, path and port to enter in the console's custom-server upload
 settings (the *Customized* screen in Ambient's awnet app, or *Weather Services →
 Customized* in Ecowitt's WS View). WS4Free accepts:
@@ -179,7 +180,22 @@ from its first upload, and uploads with a different one are rejected. Set
 `INGEST_CAPTURE=True` while setting up to log every raw upload (Admin → Ingest
 captures).
 
-### 3. Import history (Ambient Weather)
+### 3. Import history
+
+#### From WeeWX
+
+```bash
+python manage.py import_weewx <station-slug> /var/lib/weewx/weewx.sdb         # SQLite archive
+python manage.py import_weewx <station-slug> mysql://user:pass@host/weewx      # MySQL archive
+python manage.py import_weewx <station-slug> weewx.sdb --dry-run               # see what would be imported
+```
+
+Any WeeWX unit system is converted. Readings WS4Free already has are kept (the
+archive only fills gaps), so it's safe to re-run. See the user guide's
+[Importing history from WeeWX](docs/guide/connecting.md#importing-history-from-weewx)
+for what's imported and how to do it with Docker.
+
+#### From Ambient Weather
 
 ```bash
 python manage.py backfill_ambient <station-slug>             # everything the API still has

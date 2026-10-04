@@ -315,3 +315,114 @@ class IngestViewTests(TestCase):
                                         content_type='application/x-www-form-urlencoded')
         self.assertEqual(response.status_code, 200)
         self.assertAlmostEqual(Observation.objects.get().rain_daily_mm, 0.25 * 25.4)
+
+
+class EverywhereTests(TestCase):
+    """Extra sensors in reports and almanac records (TODO F5)."""
+
+    def setUp(self):
+        self.owner = get_user_model().objects.create_user('owner5', password='x' * 16)
+        TOTPDevice.objects.create(user=self.owner, name='phone', confirmed=True)
+        self.station = make_station(owner=self.owner, is_public=True, sensors={
+            'temp1f': {'name': 'Greenhouse', 'public': True}, 'temp2f': {'name': 'Cellar', 'public': False},
+            'pm25': {'name': '', 'public': True}, 'lightning_day': {'name': '', 'public': True}})
+        tz = self.station.tzinfo
+        readings = {  # local day → [(hour, temp1f °F, pm25, strikes so far)]
+            dt.date(2025, 7, 1): [(6, 50.0, 5.0, 0), (15, 104.0, 8.0, 3)],
+            dt.date(2025, 7, 2): [(6, 41.0, 30.0, 2), (15, 95.0, 12.0, 9)],
+        }
+        for day, rows in readings.items():
+            for hour, t1, pm, strikes in rows:
+                Observation.objects.create(station=self.station, timestamp=dt.datetime.combine(day, dt.time(hour), tzinfo=tz),
+                                           source='api', temp_c=20.0, extra={'temp1f': t1, 'temp2f': 55.0, 'pm25': pm,
+                                                                             'lightning_day': strikes})
+        Station.objects.filter(pk=self.station.pk).update(rollup_dirty_from=dt.datetime(2025, 7, 1, tzinfo=UTC))
+        refresh_station(self.station, now=dt.datetime(2025, 7, 3, tzinfo=UTC))
+
+    def test_report_columns(self):
+        from weather import reports
+        keys = [c.key for c in reports.sensor_columns(self.station)]
+        self.assertEqual(keys, ['x:temp1f:high', 'x:temp1f:low', 'x:temp1f:mean', 'x:pm25:mean', 'x:pm25:max',
+                                'x:lightning_day:strikes'])
+        self.assertIn('x:temp2f:high', [c.key for c in reports.sensor_columns(self.station, include_private=True)])
+        report = reports.build(self.station, dt.date(2025, 7, 1), dt.date(2025, 7, 2), IMPERIAL, 'day',
+                               ['x:temp1f:high', 'x:temp1f:low', 'x:pm25:max', 'x:lightning_day:strikes', 'x:temp2f:high'])
+        self.assertEqual([c.key for c in report.columns], ['x:temp1f:high', 'x:temp1f:low', 'x:pm25:max', 'x:lightning_day:strikes'])
+        self.assertEqual([[round(v, 1) for v in row.values] for row in report.rows], [[104.0, 50.0, 8.0, 3], [95.0, 41.0, 30.0, 9]])
+        self.assertEqual([round(v, 1) for v in report.summary], [104.0, 41.0, 30.0, 12])     # max, min, max, total strikes
+        page = self.client.get(reverse('weather:station-reports', args=[self.station.slug]),
+                               {'col': ['x:temp1f:high'], 'period': 'custom', 'start': '2025-07-01', 'end': '2025-07-02'})
+        self.assertContains(page, 'Greenhouse high')
+        self.assertNotContains(page, 'Cellar')
+
+    def test_almanac_records(self):
+        from weather import almanac
+        recs = {r.key: r for r in almanac.sensor_records(self.station)}
+        self.assertEqual(set(recs), {'x:temp1f:high', 'x:temp1f:low', 'x:pm25:high', 'x:lightning_day:day'})
+        high, low = recs['x:temp1f:high'], recs['x:temp1f:low']
+        self.assertEqual((round(high.value * 9 / 5 + 32, 1), high.date, high.time.astimezone(self.station.tzinfo).hour),
+                         (104.0, dt.date(2025, 7, 1), 15))
+        self.assertEqual((round(low.value * 9 / 5 + 32, 1), low.date), (41.0, dt.date(2025, 7, 2)))
+        self.assertEqual((recs['x:lightning_day:day'].value, recs['x:lightning_day:day'].date), (9, dt.date(2025, 7, 2)))
+        self.assertIn('x:temp2f:high', {r.key for r in almanac.sensor_records(self.station, include_private=True)})
+        self.assertEqual(almanac.sensor_records(self.station, year=2024), [])
+        page = self.client.get(reverse('weather:station-almanac', args=[self.station.slug]))
+        self.assertContains(page, 'Greenhouse: highest')
+        self.assertContains(page, '9 strikes')
+        self.assertNotContains(page, 'Cellar')
+        self.client.force_login(self.owner)
+        page = self.client.get(reverse('weather:station-almanac', args=[self.station.slug]))
+        self.assertContains(page, 'group=x:temp1f')                                     # "exclude these readings" link
+
+
+class LowBatteryPeriodTests(TestCase):
+    """Low-battery periods on the charts (TODO F6)."""
+
+    def test_merging(self):
+        step = 300_000
+        day = 86_400_000
+        buckets = [(0, []), (step, ['Outdoor sensor']), (2 * step, ['Outdoor sensor']), (4 * step, ['Rain gauge']),
+                   (day, ['Outdoor sensor']),                                  # back within a day: same period
+                   (3 * day, ['Outdoor sensor'])]                              # two days later: a new one
+        self.assertEqual(charts.battery_periods(buckets, step), [
+            {'start': step, 'end': day + step, 'names': ['Outdoor sensor', 'Rain gauge'], 'intermittent': True},
+            {'start': 3 * day, 'end': 3 * day + step, 'names': ['Outdoor sensor'], 'intermittent': False},
+        ])
+        self.assertFalse(charts.battery_periods([(0, ['A']), (step, ['A'])], step)[0]['intermittent'])
+
+    def test_rollups_and_history(self):
+        station = make_station(is_public=True)
+        tz = station.tzinfo
+        rows = [(dt.datetime(2025, 7, 1, 10, 5, tzinfo=tz), 'api', {'battout': 1}),
+                (dt.datetime(2025, 7, 1, 10, 10, tzinfo=tz), 'api', {'battout': 0}),
+                (dt.datetime(2025, 7, 1, 10, 15, tzinfo=tz), 'ecowitt_push', {'wh65batt': 1, 'batt1': 0}),
+                (dt.datetime(2025, 7, 1, 10, 20, tzinfo=tz), 'api', {'battout': 1})]
+        for ts, src, extra in rows:
+            Observation.objects.create(station=station, timestamp=ts, source=src, temp_c=20.0, extra=extra)
+        Station.objects.filter(pk=station.pk).update(rollup_dirty_from=dt.datetime(2025, 7, 1, tzinfo=UTC))
+        refresh_station(station, now=dt.datetime(2025, 7, 2, tzinfo=UTC))
+        self.assertEqual(DailyRollup.objects.get().low_batteries, ['Outdoor sensor'])
+        self.assertEqual(HourlyRollup.objects.get(period_start=dt.datetime(2025, 7, 1, 10, tzinfo=tz)).low_batteries,
+                         ['Outdoor sensor'])
+        start = dt.datetime(2025, 7, 1, 9, tzinfo=tz)
+        self.assertEqual(charts.history(station, start, start + dt.timedelta(hours=3), IMPERIAL)['battery'], [])   # visitors
+        raw = charts.history(station, start, start + dt.timedelta(hours=3), IMPERIAL, include_private=True)
+        ms = lambda h, m: int(dt.datetime(2025, 7, 1, h, m, tzinfo=tz).timestamp() * 1000)   # noqa: E731
+        self.assertEqual(raw['battery'], [{'start': ms(10, 5), 'end': ms(10, 15), 'names': ['Outdoor sensor'], 'intermittent': False}])
+        daily = charts.history(station, start - dt.timedelta(days=200), start + dt.timedelta(days=1), IMPERIAL,
+                               include_private=True)
+        self.assertEqual([b['names'] for b in daily['battery']], [['Outdoor sensor']])
+
+
+class LowBatteryVisibilityTests(TestCase):
+    def test_bands_only_for_the_owner(self):
+        owner = get_user_model().objects.create_user('owner6', password='x' * 16)
+        TOTPDevice.objects.create(user=owner, name='phone', confirmed=True)
+        station = make_station(owner=owner, is_public=True)
+        Observation.objects.create(station=station, timestamp=dt.datetime(2025, 7, 1, 18, tzinfo=UTC), source='api',
+                                   temp_c=20.0, extra={'battout': 0})
+        url = reverse('weather:station-chart-data', args=[station.slug])
+        query = {'kind': 'history', 'start': '2025-07-01', 'end': '2025-07-01'}
+        self.assertEqual(self.client.get(url, query).json()['battery'], [])
+        self.client.force_login(owner)
+        self.assertEqual(self.client.get(url, query).json()['battery'][0]['names'], ['Outdoor sensor'])

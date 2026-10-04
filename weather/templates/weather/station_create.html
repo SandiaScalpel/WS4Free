@@ -1,0 +1,33 @@
+{% extends "weather/base_generic.html" %}
+{% block title %}Add a station · {{ site.site_title }}{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-2xl">
+  <a href="{% url 'weather:stations' %}" class="text-sm no-underline">&larr; Stations</a>
+  <h1 class="mt-2 text-2xl font-bold">Add a station</h1>
+  <p class="mt-1 text-sm text-muted">After saving, the station's setup page shows how to send it readings. Ambient Weather
+    stations on your ambientweather.net account can also be added in one go with <code>import_ambient_stations</code>.</p>
+
+  <form method="post" class="card mt-6 space-y-4 p-6" novalidate x-data="{ source: '{{ form.source.value|default:'ambient' }}' }">
+    {% csrf_token %}
+    {% if form.errors %}<div class="alert alert-error" role="alert">Nothing was saved. Please fix the highlighted fields below.</div>{% endif %}
+    {% include "weather/partials/field.html" with field=form.name %}
+    {% include "weather/partials/field.html" with field=form.place %}
+    <div @change="source = $event.target.value">{% include "weather/partials/field.html" with field=form.source %}</div>
+    <div x-show="source === 'ambient'">{% include "weather/partials/field.html" with field=form.mac_address %}</div>
+    {% include "weather/partials/field.html" with field=form.timezone %}
+    <datalist id="tz-list">{% for tz in timezones %}<option value="{{ tz }}">{% endfor %}</datalist>
+    <div class="grid gap-4 sm:grid-cols-2 [&_.field+.field]:mt-0">
+      {% include "weather/partials/field.html" with field=form.latitude %}
+      {% include "weather/partials/field.html" with field=form.longitude %}
+    </div>
+    <div class="flex items-start gap-3">
+      <input type="checkbox" name="{{ form.is_public.html_name }}" id="{{ form.is_public.id_for_label }}" class="mt-0.5" {% if form.is_public.value %}checked{% endif %}>
+      <div>
+        <label for="{{ form.is_public.id_for_label }}" class="mb-0">{{ form.is_public.label }}</label>
+        <span class="form-help">{{ form.is_public.help_text }}</span>
+      </div>
+    </div>
+    <div class="flex justify-end"><button type="submit" class="btn btn-primary">Add station</button></div>
+  </form>
+</div>
+{% endblock %}

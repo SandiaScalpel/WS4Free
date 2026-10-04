@@ -74,9 +74,11 @@ def build(station, prefs, viewer=None, now=None):
     latest = LatestReading.objects.filter(station=station).first()
     data = dict(latest.data) if latest else {}
     calibrated = False
+    excluded = set()
     if latest:
         # An ongoing data-quality exclusion (a failing sensor) hides that live value too.
-        for field in excluded_fields_at(station, latest.timestamp):
+        excluded = excluded_fields_at(station, latest.timestamp)
+        for field in excluded:
             data.pop(field, None)
         corrected = correct_live(station, data, latest.timestamp)
         calibrated = corrected is not data
@@ -126,6 +128,7 @@ def build(station, prefs, viewer=None, now=None):
         'wind_compass': u.compass(data.get('wind_dir_deg')),
         'forecast': forecasts.display(forecasts.current(station, now=now), prefs, today),
         'sensor_groups': sensor_catalog.dashboard_groups(station, latest, rollup.extra if rollup else {}, prefs,
+                                                         exclude={f[2:] for f in excluded if f.startswith('x:')},
                                                          include_private=can_see_private),
         'low_batteries': sensor_catalog.low_batteries(latest.extra, latest.source) if latest and can_see_private else [],
         'show_indoor': can_see_private and (data.get('temp_in_c') is not None or data.get('humidity_in') is not None),

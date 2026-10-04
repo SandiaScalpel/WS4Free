@@ -9,6 +9,7 @@ urlpatterns = [
     path('', views.home, name='home'),
     path('units/', views.set_units, name='set-units'),
     path('stations/', views.station_list, name='stations'),
+    path('stations/new/', views.station_create, name='station-create'),
     path('compare/', views.compare_page, name='compare'),
     path('compare/data/', views.compare_json, name='compare-data'),
     path('charts/', views.charts_home, name='charts'),

@@ -18,7 +18,8 @@ An exclusion sets aside a period's readings for chosen measurements:
 - rain;
 - pressure;
 - sun and UV;
-- indoor.
+- indoor;
+- any extra sensor (a temperature probe, soil sensor, air quality monitor…).
 
 Choose the measurements, the start, and either an end or leave the end blank
 for a problem that's still going on (new readings are then set aside as they

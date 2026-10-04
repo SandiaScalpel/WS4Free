@@ -44,6 +44,7 @@ services:
         condition: service_healthy
 
   scheduler:
+    build: .
     image: ws4free:latest
     restart: unless-stopped
     command: ["scheduler"]

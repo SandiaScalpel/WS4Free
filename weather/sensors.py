@@ -31,6 +31,7 @@ KINDS = {
     'humidity': ('Humidity', 'pct', True, False),
     'soil_temp': ('Soil temperature', 'temp', True, True),
     'soil_moisture': ('Soil moisture', 'pct', True, True),
+    'soil_tension': ('Soil tension', 'cb', True, True),
     'leaf_wetness': ('Leaf wetness', 'pct', True, True),
     'pm25': ('PM2.5', 'pm', True, True),
     'pm10': ('PM10', 'pm', True, True),
@@ -81,6 +82,8 @@ SPECS = [
     _s(r'soilhum(\d+)', 'soil_moisture', 'Soil moisture {n}'),
     _s(r'soilmoisture(\d+)', 'soil_moisture', 'Soil moisture {n}'),
     _s(r'soilmoisture', 'soil_moisture', 'Soil moisture 1'),
+    # Soil water tension (centibars; higher = drier): Ambient soiltensN, WeeWX soilMoistN (Davis Watermark).
+    _s(r'soiltens(\d+)', 'soil_tension', 'Soil tension {n}'),
     # Leaf wetness (%).
     _s(r'leafwetness(\d+)', 'leaf_wetness', 'Leaf wetness {n}'),
     _s(r'leafwetness_ch(\d+)', 'leaf_wetness', 'Leaf wetness {n}'),
@@ -226,6 +229,8 @@ def format_value(sensor, si, prefs):
     k = sensor.unit_kind
     if k == 'temp':
         return f'{prefs.t(si):.1f}{prefs.label("temp")}'
+    if k == 'cb':
+        return f'{si:.0f} cb'
     if k == 'pct':
         return f'{si:.0f}%'
     if k == 'pm':
@@ -294,13 +299,16 @@ def low_batteries(extra, source):
     mean opposite things per brand (Ambient batt1 = 1 is OK, Ecowitt batt1 = 1 is
     low), so the upload's source decides."""
     ecowitt = source == 'ecowitt_push'
+    weewx = source == 'weewx_import'
     low = []
     for key, raw in (extra or {}).items():
         try:
             value = float(raw)
         except (TypeError, ValueError):
             continue
-        if ecowitt:
+        if weewx:
+            is_low = key.endswith('BatteryStatus') and value == 1
+        elif ecowitt:
             is_low = ((_ECOWITT_LOW_IS_1.match(key) and value == 1)
                       or (_ECOWITT_VOLTS.match(key) and 0 < value < 1.2)
                       or (_ECOWITT_LEVEL.match(key) and value <= 1))
@@ -308,8 +316,13 @@ def low_batteries(extra, source):
             is_low = ((_AMBIENT_OK_IS_1.match(key) and value == 0)
                       or (_AMBIENT_LOW_IS_1.match(key) and value == 1))
         if is_low:
-            low.append(BATTERY_NAMES.get(key) or _battery_label(key))
+            low.append(BATTERY_NAMES.get(key) or WEEWX_BATTERY_NAMES.get(key) or _battery_label(key))
     return sorted(set(low))
+
+
+WEEWX_BATTERY_NAMES = {'outTempBatteryStatus': 'Outdoor sensor', 'inTempBatteryStatus': 'Indoor sensor',
+                       'windBatteryStatus': 'Wind sensor', 'rainBatteryStatus': 'Rain gauge',
+                       'txBatteryStatus': 'Transmitter', 'uvBatteryStatus': 'UV sensor'}
 
 
 def _battery_label(key):
@@ -350,10 +363,10 @@ def summarise(rows, sensor_keys_):
 
 # ── Dashboard ────────────────────────────────────────────────────────────────
 
-def dashboard_groups(station, latest, today_extra, prefs, include_private=False):
+def dashboard_groups(station, latest, today_extra, prefs, include_private=False, exclude=()):
     """Live tiles for the dashboard's "More sensors" section, grouped by kind:
     [{'label', 'items': [{'name', 'value', 'detail', 'tone', 'private'}]}]."""
-    extra = (latest.extra if latest else None) or {}
+    extra = {k: v for k, v in ((latest.extra if latest else None) or {}).items() if k not in exclude}
     groups = {}
     for sensor, name in station_sensors(station, include_private):
         raw = extra.get(sensor.key)
@@ -363,12 +376,12 @@ def dashboard_groups(station, latest, today_extra, prefs, include_private=False)
         item = {'name': name, 'value': format_value(sensor, si, prefs), 'detail': '', 'tone': '',
                 'private': not (station.sensors.get(sensor.key) or {}).get('public')}
         day = (today_extra or {}).get(sensor.key)
-        if sensor.kind in ('temperature', 'soil_temp', 'humidity', 'soil_moisture') and day:
+        if sensor.kind in ('temperature', 'soil_temp', 'humidity', 'soil_moisture', 'soil_tension') and day:
             lo, hi = min(day[1], si), max(day[2], si)
             if sensor.unit_kind == 'temp':
                 item['detail'] = f'Today {prefs.t(lo):.0f}–{prefs.t(hi):.0f}{prefs.label("temp")}'
             else:
-                item['detail'] = f'Today {lo:.0f}–{hi:.0f}%'
+                item['detail'] = f'Today {lo:.0f}–{hi:.0f}' + (' cb' if sensor.unit_kind == 'cb' else '%')
         elif sensor.kind == 'pm25':
             avg = sensor.si(extra.get(PM25_24H.get(sensor.key, '')))
             category = pm25_category(avg if avg is not None else si)
