@@ -80,6 +80,10 @@ def _apparent_pair(temp_c, humidity, wind_ms):
 # Extra-sensor values in the viewer's units, by unit kind (weather.sensors).
 SENSOR_DIGITS = {'temp': 1, 'pct': 0, 'cb': 0, 'pm': 1, 'ppm': 0, 'count': 0}
 SENSOR_LINES_PER_CHART = 8      # the categorical palette's size; more channels → another chart
+# Y-axis span per sensor kind, as multiples of the lowest and highest values on the chart, clamped
+# to the kind's possible range (owner's request: soil moisture from half the lowest to twice the
+# highest, so day-to-day wiggles don't look like big swings).
+SENSOR_AXIS = {'soil_moisture': {'low': 0.5, 'high': 2, 'floor': 0, 'ceiling': 100}}
 
 
 def _sensor_display(sensor, si, prefs):
@@ -130,6 +134,7 @@ def _sensor_charts(sensors, prefs):
                 'unit': units[first.unit_kind],
                 'digits': SENSOR_DIGITS.get(first.unit_kind, 1),
                 'bars': kind == 'lightning',
+                'axis': SENSOR_AXIS.get(kind),
                 'lines': [{'col': f'x:{s.key}', 'name': n} for s, n in chunk],
             })
     return charts

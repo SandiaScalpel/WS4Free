@@ -7,6 +7,18 @@ each release for anything you need to do beyond the usual steps in the README.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [Semantic Versioning](https://semver.org/).
 
+## 1.3.0 — 2026-10-07
+
+### Changed
+
+- **Charts**: the temperature chart's lines have their own colours — temperature
+  yellow, dew point green, wind chill purple, heat index red — and the shaded
+  low–high range has a thin orange line along its highs and a blue one along
+  its lows.
+- **Charts**: soil moisture is scaled from half the lowest reading in the range
+  to twice the highest (rounded down to a multiple of 5), instead of zooming
+  to the data, so small daily changes don't look like big swings.
+
 ## 1.2.0 — 2026-10-04
 
 ### Added

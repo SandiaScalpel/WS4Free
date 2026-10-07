@@ -23,6 +23,12 @@ humidity, wind speed and gust, rain, pressure and solar radiation, plus any
 - **Zoom**: scroll or pinch on any chart; drag to pan; or use the slider under
   the last chart. All charts move together. **Reset zoom** goes back.
 - **Hover** (or tap) for exact values.
+- **Temperature** is the yellow line, dew point green, wind chill purple and
+  heat index red; the shaded low–high range has an orange top edge (highs)
+  and a blue bottom edge (lows).
+- **Soil moisture** is scaled from half the lowest reading in the range to
+  twice the highest (both rounded down to a multiple of 5), so small daily
+  changes don't look like big swings.
 - **Rain** shows bars for each 5 minutes, hour or day, and a line, on the
   right-hand scale, of the total since the start of the range.
 - **Gaps**: when the station was offline the lines break rather than drawing

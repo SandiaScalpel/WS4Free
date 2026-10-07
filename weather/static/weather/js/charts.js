@@ -16,6 +16,9 @@
     light: ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'],
     dark: ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'],
   };
+  // The temperature line (owner's choice: yellow). The palette's amber slot is too close to the
+  // orange high edge beside it, so a truer yellow, dark enough to read on each surface.
+  const TEMP_YELLOW = { light: '#d1ad00', dark: '#f2cc2e' };
   // Ordinal ramps for the wind-rose speed bins (validated with --ordinal on our surfaces).
   const ROSE = {
     light: ['#86b6ef', '#5598e7', '#2a78d6', '#1c5cab', '#0d366b'],
@@ -280,7 +283,7 @@
               const t = ps[0].value[0];
               let html = `<div style="color:${c.muted};margin-bottom:2px">${when.format(new Date(t))}</div>`;
               ps.forEach((p) => {
-                if (p.seriesName === '_low') return;
+                if (p.seriesName.startsWith('_')) return;
                 if (p.seriesName === 'Low–high range') {
                   const i = p.dataIndex, lo = s.temp_min[i], hi = s.temp_max[i];
                   if (lo != null && hi != null) html += row(p.color, `${fmt(lo, d.temp)} – ${fmt(hi, d.temp)}`, 'Low–high', 8);
@@ -313,19 +316,27 @@
           temp: () => {
             const series = [];
             const band = hasAny('temp_min') && hasAny('temp_max');
+            // Owner's colours: temperature yellow, wind chill purple, heat index red; the range's
+            // top (high) edge orange and bottom (low) edge blue. Dew point green, clear of both edges.
+            const [blue, orange, green, , , , purple, red] = pal, yellow = TEMP_YELLOW[theme()];
             if (band) {
               series.push({ name: '_low', type: 'line', stack: 'band', data: pts('temp_min'), showSymbol: false,
                             lineStyle: { opacity: 0 }, itemStyle: { color: 'transparent' }, emphasis: { disabled: true } });
               series.push({ name: 'Low–high range', type: 'line', stack: 'band', showSymbol: false,
                             data: s.time.map((t, i) => [t, s.temp_max[i] != null && s.temp_min[i] != null ? s.temp_max[i] - s.temp_min[i] : null]),
-                            lineStyle: { opacity: 0 }, itemStyle: { color: pal[0] }, areaStyle: { color: pal[0], opacity: 0.12 },
+                            lineStyle: { opacity: 0 }, itemStyle: { color: blue }, areaStyle: { color: blue, opacity: 0.12 },
                             emphasis: { disabled: true } });
+              [['_high_edge', 'temp_max', orange], ['_low_edge', 'temp_min', blue]].forEach(([name, key, color]) => {
+                const edge = line(name, key, color, false);
+                edge.lineStyle.width = 1;
+                series.push(edge);
+              });
             }
-            series.push(line('Temperature', 'temp', pal[0], false));
-            series.push(line('Dew point', 'dewpoint', pal[1], false));
+            series.push(line('Temperature', 'temp', yellow, false));
+            series.push(line('Dew point', 'dewpoint', green, false));
             const legend = [{ name: 'Temperature', icon: 'rect' }, { name: 'Dew point', icon: 'rect' }];
             // Shown only while they apply (≤ 50 °F and windy / ≥ 80 °F), so they don't hide the temperature line.
-            [['Wind chill', 'windchill', pal[2]], ['Heat index', 'heatindex', pal[3]]].forEach(([name, key, color]) => {
+            [['Wind chill', 'windchill', purple], ['Heat index', 'heatindex', red]].forEach(([name, key, color]) => {
               if (!hasAny(key)) return;
               series.push(line(name, key, color, false));
               legend.push({ name, icon: 'rect' });
@@ -383,6 +394,22 @@
             const legend = sc.lines.length > 1 ? sc.lines.map((ln) => ({ name: ln.name, icon: 'rect' })) : null;
             const opt = base(x.key, series, legend, sc.digits);
             if (sc.bars) opt.yAxis.min = 0;
+            if (sc.axis) {
+              // Both ends rounded DOWN to multiples of 5 (owner's choice), never cutting off the data;
+              // the tick step is the smallest multiple of 5 that divides the span into ≤ 7 steps.
+              const a = sc.axis;
+              const vals = sc.lines.flatMap((ln) => s[ln.col] || []).filter((v) => v != null);
+              if (vals.length) {
+                const vmin = Math.min(...vals), vmax = Math.max(...vals);
+                const lo = Math.max(a.floor, Math.min(Math.floor(vmin * a.low / 5) * 5, Math.floor(vmin)));
+                let hi = Math.min(a.ceiling, Math.floor(vmax * a.high / 5) * 5);
+                if (hi < vmax) hi = Math.min(a.ceiling, Math.ceil(vmax / 5) * 5);
+                if (hi <= lo) hi = lo + 5;
+                let step = 5;
+                while ((hi - lo) / step > 7 || (hi - lo) % step) step += 5;
+                Object.assign(opt.yAxis, { scale: false, min: lo, max: hi, interval: step });
+              }
+            }
             return opt;
           };
         });
