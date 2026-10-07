@@ -225,6 +225,9 @@ class CalibrationForm(forms.Form):
     baseline_start = forms.DateField(required=False, label='Trusted from', widget=forms.DateInput(attrs={'type': 'date'}))
     baseline_end = forms.DateField(required=False, label='Trusted until', widget=forms.DateInput(attrs={'type': 'date'}),
                                    help_text='A period when this sensor read correctly, ideally a full year.')
+    compare_start = forms.DateField(required=False, label='Compared from', widget=forms.DateInput(attrs={'type': 'date'}))
+    compare_end = forms.DateField(required=False, label='Compared until', widget=forms.DateInput(attrs={'type': 'date'}),
+                                  help_text='The days to compare with the neighbours (see Manage → Neighbours → For calibration).')
     night = forms.FloatField(required=False, label='Night offset')
     day = forms.FloatField(required=False, label='Extra daytime offset')
     solar = forms.FloatField(required=False, label='Solar slope', help_text='Additional error per 1000 W/m² of sunshine.')
@@ -236,6 +239,15 @@ class CalibrationForm(forms.Form):
         self.fields['night'].help_text = f'How much too warm ({unit}) the sensor reads at night; negative if too cold.'
         self.fields['day'].help_text = f'Extra error ({unit}) whenever the sun is up.'
         self.fields['solar'].label = f'Solar slope ({unit} per 1000 W/m²)'
+        from . import neighbours
+        self.neighbour_range = neighbours.calibration_range(station) if station.uses_site_services else None
+        if self.neighbour_range is None:
+            self.fields['mode'].choices = [c for c in self.fields['mode'].choices if c[0] != 'neighbours']
+        else:
+            for name in ('compare_start', 'compare_end'):
+                self.fields[name].widget.attrs.update(min=self.neighbour_range[0].isoformat(),
+                                                      max=self.neighbour_range[1].isoformat())
+        self.suggestion = None
 
     def full_clean(self):
         with timezone.override(self.station.tzinfo):
@@ -282,10 +294,27 @@ class CalibrationForm(forms.Form):
                 self.add_error('baseline_end', 'Use at least a month; a full year captures every season.')
             elif start and dt.datetime.combine(be, dt.time(), tzinfo=self.station.tzinfo) > start:
                 self.add_error('baseline_end', 'The trusted period must end before the affected period starts.')
+        elif data.get('mode') == 'neighbours':
+            self._clean_neighbours(data)
         else:
             if all(data.get(f) in (None, 0) for f in ('night', 'day', 'solar')):
                 self.add_error('night', 'Enter at least one non-zero offset.')
         return data
+
+    def _clean_neighbours(self, data):
+        from . import neighbours
+        cs, ce = data.get('compare_start'), data.get('compare_end')
+        first, last = self.neighbour_range
+        if not cs or not ce:
+            self.add_error('compare_end', 'Enter the days to compare.')
+        elif ce < cs:
+            self.add_error('compare_end', 'The end must be on or after the start.')
+        elif cs < first or ce > last:
+            self.add_error('compare_end', f'Neighbour readings cover {first:%b %-d, %Y} to {last:%b %-d, %Y}.')
+        elif not self.errors:
+            self.suggestion = neighbours.suggest_calibration(self.station, cs, ce)
+            if self.suggestion['coefficients'] is None:
+                self.add_error('compare_end', 'Too few readings matched the neighbours in these days; choose a longer period.')
 
     def save(self, user):
         d = self.cleaned_data
@@ -295,6 +324,14 @@ class CalibrationForm(forms.Form):
             return TempCalibration.objects.create(**common, reference_station=d['reference_station'],
                                                   baseline_start=d['baseline_start'], baseline_end=d['baseline_end'],
                                                   status='fitting', message='Fetching reference data…')
+        if d['mode'] == 'neighbours':
+            sg = self.suggestion
+            coef = {k: round(v, 3) for k, v in sg['coefficients'].items()}
+            return TempCalibration.objects.create(
+                **common, baseline_start=d['compare_start'], baseline_end=d['compare_end'], status='fitted',
+                coefficients={str(m): dict(coef) for m in range(1, 13)},
+                validation={**sg['validation'], 'source': 'neighbours', 'neighbours': sg['neighbours'],
+                            'verdict': sg['verdict'], 'means': sg['means'], 'counts': sg['counts']})
         to_c = (lambda v: v * 5 / 9) if self.prefs.temp == 'F' else (lambda v: v)
         coef = {'night': to_c(d['night'] or 0.0), 'day': to_c(d['day'] or 0.0), 'solar': to_c(d['solar'] or 0.0)}
         return TempCalibration.objects.create(**common, status='pending',

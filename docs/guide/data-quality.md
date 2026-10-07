@@ -87,6 +87,37 @@ a few minutes. Nothing changes until you've reviewed the result:
 If the correction barely helps, you'll see a warning. Otherwise choose
 **Apply**, or **Discard** to throw it away.
 
+### Fitted to neighbours
+
+If you follow [neighbouring stations](neighbours.md), WS4Free can fit the
+correction from them instead. Open **Manage → Neighbours**, pick a period
+under **For calibration** and choose **Suggest a calibration**. It shows your
+sensor's average difference from the neighbours at night and while the sun is
+up, the suggested correction, and whether it's worth applying:
+
+- **Night** runs from astronomical dusk (when the sun is 18° below the
+  horizon, an hour and a half or so after sunset) until 15
+  minutes after sunrise, when a sensor's own error is steadiest. **Sun up** is
+  the daytime. The **evening** in between is shown but left out of the fit:
+  sensors and sites cool at different rates then, which no fixed offset
+  describes.
+- Your sensor's own readings are used, before any calibration you've applied.
+- The fit is tested on days it didn't use. **Recommended** means the correction
+  brings your readings noticeably closer to the neighbours'; **Not needed**
+  means your sensor already agrees to within a fraction of a degree; **Not
+  recommended yet** means the differences vary more than they stay the same, so
+  a longer period with more sunny days and clear nights may help.
+
+**Use for a calibration…** opens this page with **Fitted to neighbours**
+selected and the period filled in. Set **Affected from / until** (no earlier
+than when the sensor was put where it was during those days), then **Fit
+correction** and review it before choosing **Apply**. The same correction is
+used for every month, so check again as the seasons change.
+
+Some difference may be real rather than your sensor's: on calm nights cold air
+collects in low spots, so a station lower than its neighbours can read colder
+with a perfect sensor.
+
 ### Manual
 
 If there's no reference station nearby, choose **Manual** and enter the three

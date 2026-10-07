@@ -46,6 +46,7 @@ TEMP_FIELDS = ('temp_c', 'temp_min_c', 'temp_max_c')
 FAR_FUTURE = dt.datetime(9999, 1, 1, tzinfo=dt.UTC)
 ACTIVE = ('pending', 'applied')
 SUN_UP_WM2 = 5.0
+ASTRONOMICAL_DUSK = -18.0          # sun's elevation, degrees
 BATCH = 2000
 
 
@@ -66,6 +67,35 @@ def solar_elevation(lat, lon, when):
     phi = math.radians(lat)
     cos_zen = math.sin(phi) * math.sin(decl) + math.cos(phi) * math.cos(decl) * math.cos(ha)
     return 90 - math.degrees(math.acos(max(-1.0, min(1.0, cos_zen))))
+
+
+def _crossing(lat, lon, lo, hi, elevation):
+    """When the sun's elevation crosses `elevation` between lo and hi (bisection;
+    the caller makes sure it does)."""
+    rising = solar_elevation(lat, lon, lo) < elevation
+    while hi - lo > dt.timedelta(seconds=30):
+        mid = lo + (hi - lo) / 2
+        if (solar_elevation(lat, lon, mid) < elevation) == rising:
+            lo = mid
+        else:
+            hi = mid
+    return lo + (hi - lo) / 2
+
+
+def sun_times(lat, lon, day, tz):
+    """(sunrise, dusk) for a local date as UTC datetimes: sunrise when the sun's
+    upper edge clears the horizon (−0.833°), dusk at the end of astronomical
+    twilight (−18°). Either is None when it doesn't happen that day (polar day or
+    night; high-latitude summer nights never get fully dark)."""
+    midnight = dt.datetime.combine(day, dt.time(), tzinfo=tz).astimezone(dt.UTC)
+    steps = [midnight + dt.timedelta(minutes=10 * i) for i in range(145)]
+    noon = max(steps, key=lambda t: solar_elevation(lat, lon, t))
+    sunrise = dusk = None
+    if solar_elevation(lat, lon, midnight) < -0.833 < solar_elevation(lat, lon, noon):
+        sunrise = _crossing(lat, lon, midnight, noon, -0.833)
+    if solar_elevation(lat, lon, noon) > ASTRONOMICAL_DUSK > solar_elevation(lat, lon, steps[-1]):
+        dusk = _crossing(lat, lon, noon, steps[-1], ASTRONOMICAL_DUSK)
+    return sunrise, dusk
 
 
 def coefficients_for(calibration, month):

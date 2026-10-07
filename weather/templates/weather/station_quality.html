@@ -82,7 +82,7 @@
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
           <p class="font-medium">{{ c.start|date:"M j, Y" }} – {% if c.end %}{{ c.end|date:"M j, Y" }}{% else %}<span class="text-warn">ongoing</span>{% endif %}
-            <span class="badge ml-1 bg-surface-2 text-muted">{% if c.mode == 'reference' %}Fitted to {{ c.reference_station }}{% else %}Manual{% endif %}</span></p>
+            <span class="badge ml-1 bg-surface-2 text-muted">{% if c.mode == 'reference' %}Fitted to {{ c.reference_station }}{% elif c.mode == 'neighbours' %}Fitted to neighbours{% else %}Manual{% endif %}</span></p>
           {% if c.reason %}<p class="mt-1 text-sm text-muted">{{ c.reason }}</p>{% endif %}
           <p class="mt-1 text-xs text-faint">
             {% if c.status == 'fitting' %}<span class="text-accent">{{ c.message|default:"Fitting…" }}</span>
@@ -91,7 +91,7 @@
             {% elif c.status == 'removing' %}<span class="text-accent">Restoring original readings…</span>
             {% elif c.status == 'applied' %}{{ c.readings|intcomma }} reading{{ c.readings|pluralize }} corrected
             {% else %}<span class="text-bad">Failed: {{ c.message }}</span>{% endif %}
-            · added {{ c.created_at|date:"M j, Y" }}{% if c.mode == 'reference' and c.baseline_start %} · trusted period {{ c.baseline_start|date:"M j, Y" }} – {{ c.baseline_end|date:"M j, Y" }}{% endif %}
+            · added {{ c.created_at|date:"M j, Y" }}{% if c.mode == 'reference' and c.baseline_start %} · trusted period {{ c.baseline_start|date:"M j, Y" }} – {{ c.baseline_end|date:"M j, Y" }}{% elif c.mode == 'neighbours' and c.baseline_start %} · compared {{ c.baseline_start|date:"M j, Y" }} – {{ c.baseline_end|date:"M j, Y" }}{% endif %}
           </p>
         </div>
         {% if can_manage %}<div class="flex gap-2">
@@ -107,7 +107,21 @@
         </div>{% endif %}
       </div>
 
-      {% if c.validation.before %}
+      {% if c.mode == 'neighbours' and c.validation.before %}
+      {% with v=c.validation coef=c.coefficients.1 %}
+      <div class="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+        <div class="rounded-lg bg-surface-2 p-3"><p class="text-xs text-muted">Night offset</p><p class="text-lg font-semibold">{{ coef.night|temp_delta:units }}</p></div>
+        <div class="rounded-lg bg-surface-2 p-3"><p class="text-xs text-muted">Extra while the sun is up</p><p class="text-lg font-semibold">{{ coef.day|temp_delta:units }}</p></div>
+        <div class="rounded-lg bg-surface-2 p-3"><p class="text-xs text-muted">Per 1000 W/m²</p><p class="text-lg font-semibold">{{ coef.solar|temp_delta:units }}</p></div>
+        <div class="rounded-lg bg-surface-2 p-3"><p class="text-xs text-muted">Sunny noon (~900 W/m²)</p><p class="text-lg font-semibold">{{ coef|noon_offset|temp_delta:units }}</p></div>
+      </div>
+      <p class="mt-2 text-xs text-muted">How much too warm the sensor read compared with {{ v.neighbours }} neighbour{{ v.neighbours|pluralize }}; the correction
+        subtracts it, the same every month. Typical difference ±{{ v.before|temp_delta:units|slice:"1:" }} → ±{{ v.after|temp_delta:units|slice:"1:" }},
+        tested on days the fit didn't see ({{ v.readings|intcomma }} readings).</p>
+      {% if v.verdict == 'negligible' %}<p class="alert alert-info mt-3">The sensor agreed with the neighbours to within a fraction of a degree; this correction changes little.</p>
+      {% elif v.verdict == 'weak' %}<p class="alert alert-warning mt-3">The correction barely improves on the raw readings. A longer comparison period may give a better fit.</p>{% endif %}
+      {% endwith %}
+      {% elif c.validation.before %}
       {% with v=c.validation %}
       <div class="mt-4 grid gap-3 text-sm sm:grid-cols-3">
         <div class="rounded-lg bg-surface-2 p-3"><p class="text-xs text-muted">Typical error before</p><p class="text-lg font-semibold">±{{ v.before|temp_delta:units|slice:"1:" }}</p><p class="text-xs text-faint">average bias {{ v.bias_before|temp_delta:units }}</p></div>
@@ -120,7 +134,7 @@
       {% endwith %}
       {% endif %}
 
-      {% if c.coefficients %}
+      {% if c.coefficients and c.mode != 'neighbours' %}
       <details class="mt-4" {% if c.status == 'fitted' %}open{% endif %}>
         <summary class="cursor-pointer text-sm font-medium">Correction by month</summary>
         <div class="relative mt-2 overflow-x-auto">
@@ -153,13 +167,13 @@
         {% if cal_form.errors %}<div class="alert alert-error" role="alert">Nothing was saved. Please fix the highlighted fields below.</div>{% endif %}
         <fieldset>
           <legend class="mb-2 text-sm font-medium">Method</legend>
-          <div class="grid gap-2 sm:grid-cols-2">
+          <div class="grid gap-2 {% if cal_form.fields.mode.choices|length == 3 %}sm:grid-cols-3{% else %}sm:grid-cols-2{% endif %}">
             {% for choice in cal_form.mode %}
             <label class="m-0 flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm font-normal"
                    :class="mode === '{{ choice.data.value }}' ? 'border-accent bg-accent-soft' : 'border-line hover:bg-surface-2'">
               <input type="radio" name="{{ choice.data.name }}" value="{{ choice.data.value }}" x-model="mode" class="mt-0.5" {% if choice.data.selected %}checked{% endif %}>
               <span><span class="font-medium">{{ choice.choice_label }}</span>
-                <span class="block text-xs text-muted">{% if choice.data.value == 'reference' %}Compare with a nearby airport station hour by hour and fit the correction for you.{% else %}Enter the offsets yourself; used for every month.{% endif %}</span></span>
+                <span class="block text-xs text-muted">{% if choice.data.value == 'reference' %}Compare with a nearby airport station hour by hour and fit the correction for you.{% elif choice.data.value == 'neighbours' %}Fit it from your Weather Underground neighbours over days you choose.{% else %}Enter the offsets yourself; used for every month.{% endif %}</span></span>
             </label>
             {% endfor %}
           </div>
@@ -176,13 +190,21 @@
           </div>
           <p class="text-xs text-muted">Reference data comes from the Iowa Environmental Mesonet's public archive; only the station identifier and dates are sent.</p>
         </div>
+        <div x-show="mode === 'neighbours'" x-cloak class="space-y-4">
+          <div class="grid gap-4 sm:grid-cols-2 [&_.field+.field]:mt-0">
+            {% include "weather/partials/field.html" with field=cal_form.compare_start %}
+            {% include "weather/partials/field.html" with field=cal_form.compare_end %}
+          </div>
+          <p class="text-xs text-muted">The fit describes the sensor where it was during these days: start the affected period no earlier than when it was put there.
+            {% if station.uses_site_services %}<a href="{% url 'weather:station-neighbours' station.slug %}#for-calibration">Preview the suggestion</a> on the Neighbours page.{% endif %}</p>
+        </div>
         <div x-show="mode === 'manual'" x-cloak class="grid gap-4 sm:grid-cols-3 [&_.field+.field]:mt-0">
           {% include "weather/partials/field.html" with field=cal_form.night %}
           {% include "weather/partials/field.html" with field=cal_form.day %}
           {% include "weather/partials/field.html" with field=cal_form.solar %}
         </div>
         {% include "weather/partials/field.html" with field=cal_form.reason %}
-        <div class="flex justify-end"><button type="submit" class="btn btn-primary" x-text="mode === 'reference' ? 'Fit correction' : 'Apply correction'">Fit correction</button></div>
+        <div class="flex justify-end"><button type="submit" class="btn btn-primary" x-text="mode === 'manual' ? 'Apply correction' : 'Fit correction'">Fit correction</button></div>
       </form>
     </div>{% elif not calibrations %}<p class="card mt-4 p-5 text-sm text-muted">No calibrations.</p>{% endif %}
   </section>

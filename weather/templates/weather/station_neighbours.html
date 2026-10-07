@@ -159,6 +159,83 @@
     {{ chart|json_script:"neighbours-data" }}
   </section>
   {% endif %}
+
+  {% if for_calibration %}{% with fc=for_calibration %}
+  <section id="for-calibration" class="card mt-8 p-6" aria-labelledby="for-calibration-title">
+    <h2 id="for-calibration-title" class="text-base font-semibold">For calibration</h2>
+    <p class="mt-1 max-w-prose text-sm text-muted">
+      Work out a temperature correction from how your sensor differs from the neighbours over a period you choose.
+      Pick days when your sensor was where it is now; a mix of sunny days and clear nights shows its errors best.
+      The fit uses your sensor's own readings, before any calibration, and only the neighbours that are counted.
+    </p>
+    <form method="get" action="#for-calibration" class="mt-4 flex flex-wrap items-end gap-3">
+      <input type="hidden" name="range" value="{{ range_key }}">
+      <div>
+        <label for="cal-start">From</label>
+        <input id="cal-start" name="cal_start" type="date" value="{{ fc.start|date:'Y-m-d' }}" min="{{ fc.first|date:'Y-m-d' }}" max="{{ fc.last|date:'Y-m-d' }}" required>
+      </div>
+      <div>
+        <label for="cal-end">To</label>
+        <input id="cal-end" name="cal_end" type="date" value="{{ fc.end|date:'Y-m-d' }}" min="{{ fc.first|date:'Y-m-d' }}" max="{{ fc.last|date:'Y-m-d' }}" required>
+      </div>
+      <button type="submit" class="btn btn-secondary">Suggest a calibration</button>
+    </form>
+    <p class="mt-2 text-xs text-faint">Neighbour readings are available from {{ fc.first|date:"M j, Y" }}. Removing a neighbour removes its readings too.</p>
+
+    {% if fc.suggestion %}{% with sg=fc.suggestion %}
+    <div class="relative mt-5 overflow-x-auto">
+      <table class="w-full text-sm tabular-nums">
+        <thead class="text-xs text-muted">
+          <tr class="border-b border-line">
+            <th scope="col" class="py-2 pr-4 text-left font-medium">{{ fc.start|date:"M j" }} – {{ fc.end|date:"M j, Y" }}</th>
+            <th scope="col" class="px-4 py-2 text-right font-medium">You minus neighbours</th>
+            <th scope="col" class="py-2 pl-4 text-right font-medium">Readings</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-line">
+          <tr><th scope="row" class="py-2 pr-4 text-left font-medium">Night <span class="block text-xs font-normal text-faint">astronomical dusk until 15 minutes after sunrise</span></th>
+            <td class="px-4 py-2 text-right">{{ sg.means.night|temp_delta:units }}</td><td class="py-2 pl-4 text-right text-muted">{{ sg.counts.night|intcomma }}</td></tr>
+          <tr><th scope="row" class="py-2 pr-4 text-left font-medium">Sun up</th>
+            <td class="px-4 py-2 text-right">{{ sg.means.day|temp_delta:units }}</td><td class="py-2 pl-4 text-right text-muted">{{ sg.counts.day|intcomma }}</td></tr>
+          <tr class="text-muted"><th scope="row" class="py-2 pr-4 text-left font-normal">Evening <span class="block text-xs text-faint">sunset until astronomical dusk; left out of the fit</span></th>
+            <td class="px-4 py-2 text-right">{{ sg.means.evening|temp_delta:units }}</td><td class="py-2 pl-4 text-right">{{ sg.counts.evening|intcomma }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    {% if sg.coefficients %}{% with c=sg.coefficients v=sg.validation %}
+    <h3 class="mt-6 text-sm font-semibold">Suggested correction</h3>
+    <dl class="mt-2 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+      <div class="rounded-lg bg-surface-2 p-3"><dt class="text-xs text-muted">Night offset</dt><dd class="text-lg font-semibold">{{ c.night|temp_delta:units }}</dd></div>
+      <div class="rounded-lg bg-surface-2 p-3"><dt class="text-xs text-muted">Extra while the sun is up</dt><dd class="text-lg font-semibold">{{ c.day|temp_delta:units }}</dd></div>
+      <div class="rounded-lg bg-surface-2 p-3"><dt class="text-xs text-muted">Per 1000 W/m²</dt><dd class="text-lg font-semibold">{{ c.solar|temp_delta:units }}</dd></div>
+      <div class="rounded-lg bg-surface-2 p-3"><dt class="text-xs text-muted">Sunny noon (~900 W/m²)</dt><dd class="text-lg font-semibold">{{ c|noon_offset|temp_delta:units }}</dd></div>
+    </dl>
+    <p class="mt-2 text-xs text-faint">How much too warm your sensor reads (negative: too cold); the calibration subtracts it.
+      Typical difference from the neighbours ±{{ v.before|temp_delta:units|slice:"1:" }} before, ±{{ v.after|temp_delta:units|slice:"1:" }} after,
+      tested on days the fit didn't see ({{ v.readings|intcomma }} readings, {{ sg.neighbours }} neighbour{{ sg.neighbours|pluralize }}).</p>
+    {% if sg.verdict == 'recommended' %}
+    <p class="alert alert-success mt-4" role="status">Recommended: the correction brings your readings noticeably closer to the neighbours'.</p>
+    {% elif sg.verdict == 'negligible' %}
+    <p class="alert alert-info mt-4" role="status">Not needed: your sensor agrees with the neighbours to within a fraction of a degree.</p>
+    {% else %}
+    <p class="alert alert-warning mt-4" role="status">Not recommended yet: the correction barely reduces the differences, which vary more than they
+      stay the same. Try a longer period with more sunny days and clear nights.</p>
+    {% endif %}
+    <p class="mt-3 max-w-prose text-xs text-muted">Some difference may be real rather than your sensor's: on calm nights cold air
+      collects in low spots, so a station lower than its neighbours can read colder with a perfect sensor. The same
+      correction is used for every month; check again as the seasons change.</p>
+    <div class="mt-4 flex justify-end">
+      <a href="{% url 'weather:station-quality' station.slug %}?cal_mode=neighbours&amp;compare_start={{ fc.start|date:'Y-m-d' }}&amp;compare_end={{ fc.end|date:'Y-m-d' }}#calibration"
+         class="btn {% if sg.verdict == 'recommended' %}btn-primary{% else %}btn-secondary{% endif %}">Use for a calibration…</a>
+    </div>
+    {% endwith %}{% else %}
+    <p class="mt-4 text-sm text-muted">Too few matched readings to suggest a correction: it needs at least three hours each of
+      night and sunshine. Choose a longer period.</p>
+    {% endif %}
+    {% endwith %}{% endif %}
+  </section>
+  {% endwith %}{% endif %}
   {% endtimezone %}
 </div>
 {% endblock %}

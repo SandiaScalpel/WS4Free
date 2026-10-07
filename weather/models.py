@@ -460,11 +460,13 @@ class TempCalibration(models.Model):
         corrected = raw − Δ,   Δ = night + day·[sun up] + solar · S/1000
 
     with coefficients in °C (solar in °C per 1000 W/m²) for each calendar month.
-    Reference mode fits them against a nearby reference station; manual mode
-    uses one set for every month. Like exclusions, applying keeps the original
+    Reference mode fits them against a nearby reference station; neighbours mode
+    fits one set for every month from the Weather Underground neighbours over a
+    comparison period (baseline_start/end); manual mode uses one set for every month. Like exclusions, applying keeps the original
     values (CalibratedValue) and is fully reversible. See weather.calibration.
     """
-    MODE_CHOICES = [('reference', 'Fitted to a reference station'), ('manual', 'Manual')]
+    MODE_CHOICES = [('reference', 'Fitted to a reference station'), ('neighbours', 'Fitted to neighbours'),
+                    ('manual', 'Manual')]
     STATUS_CHOICES = [
         ('fitting', 'Fitting'), ('fitted', 'Ready to review'), ('pending', 'Applying'),
         ('applied', 'Applied'), ('removing', 'Removing'), ('failed', 'Failed'),
@@ -476,7 +478,7 @@ class TempCalibration(models.Model):
     end = models.DateTimeField(null=True, blank=True, help_text='Blank = still ongoing; new readings are corrected too.')
     coefficients = models.JSONField(default=dict, blank=True,
                                     help_text='{"1": {"night": °C, "day": °C, "solar": °C per 1000 W/m²}, … "12": …}')
-    # Reference mode
+    # Reference mode (baseline = when the sensor was trusted); neighbours mode (baseline = the comparison period)
     reference_station = models.CharField(max_length=10, blank=True, help_text='Airport/ASOS identifier, e.g. DEN.')
     baseline_start = models.DateField(null=True, blank=True)
     baseline_end = models.DateField(null=True, blank=True)

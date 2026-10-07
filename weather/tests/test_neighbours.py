@@ -1,5 +1,6 @@
 """Neighbouring Weather Underground stations (weather.neighbours)."""
 import datetime as dt
+import math
 from decimal import Decimal
 from io import StringIO
 from unittest import mock
@@ -244,3 +245,112 @@ class PageTests(TestCase):
         html = self.client.get(live).content.decode()
         self.assertIn('Neighbours', html)
         self.assertIn('+3.6°F', html)                     # 2 °C warmer
+
+
+class SuggestedCalibrationTests(TestCase):
+    """A sensor with a known error, against neighbours that read the truth."""
+    DAYS = (dt.date(2026, 7, 1), dt.date(2026, 7, 6))
+
+    def setUp(self):
+        from weather.calibration import solar_elevation
+        self.station = make_station(latitude=Decimal('35.1'), longitude=Decimal('-106.6'), owner=_admin())
+        ns = [Neighbour.objects.create(station=self.station, wu_id=f'KXX{i}') for i in range(3)]
+        phase = neighbours._phase_finder(self.station)
+        tz = self.station.tzinfo
+        t = dt.datetime.combine(self.DAYS[0], dt.time(), tzinfo=tz).astimezone(UTC)
+        end = dt.datetime.combine(self.DAYS[1] + dt.timedelta(days=1), dt.time(), tzinfo=tz).astimezone(UTC)
+        observations, readings = [], []
+        while t <= end:
+            elevation = solar_elevation(35.1, -106.6, t)
+            solar = max(0.0, 1000 * math.sin(math.radians(elevation)))
+            truth = 22 + 8 * math.sin(math.radians(elevation))
+            p = phase(t, solar)
+            error = {'night': -1.0, 'day': -1.0 + 0.5 + 2.0 * solar / 1000, 'evening': 3.0}[p]
+            observations.append(Observation(station=self.station, timestamp=t, source='api',
+                                            temp_c=truth + error, solar_wm2=solar))
+            readings += [NeighbourReading(neighbour=n, timestamp=t - dt.timedelta(minutes=1), temp_c=truth + d)
+                         for n, d in zip(ns, (-0.1, 0.0, 0.1))]
+            t += dt.timedelta(minutes=5)
+        Observation.objects.bulk_create(observations)
+        NeighbourReading.objects.bulk_create(readings)
+
+    def test_sun_times(self):
+        from weather.calibration import sun_times
+        sunrise, dusk = sun_times(35.1, -106.6, dt.date(2026, 7, 1), self.station.tzinfo)
+        # Albuquerque, July 1: sunrise 05:53 MDT, astronomical dusk 22:13 MDT.
+        self.assertLess(abs(sunrise - dt.datetime(2026, 7, 1, 11, 53, tzinfo=UTC)), dt.timedelta(minutes=4))
+        self.assertLess(abs(dusk - dt.datetime(2026, 7, 2, 4, 13, tzinfo=UTC)), dt.timedelta(minutes=4))
+        phase = neighbours._phase_finder(self.station)
+        self.assertEqual(phase(dusk - dt.timedelta(minutes=10), 0.0), 'evening')
+        self.assertEqual(phase(dusk + dt.timedelta(minutes=10), 0.0), 'night')
+        self.assertEqual(phase(sunrise + dt.timedelta(minutes=10), 20.0), 'night')
+        self.assertEqual(phase(sunrise + dt.timedelta(hours=2), 400.0), 'day')
+
+    def test_recovers_the_error_and_ignores_the_evening(self):
+        sg = neighbours.suggest_calibration(self.station, *self.DAYS)
+        c = sg['coefficients']
+        self.assertAlmostEqual(c['night'], -1.0, places=2)
+        self.assertAlmostEqual(c['day'], 0.5, places=2)
+        self.assertAlmostEqual(c['solar'], 2.0, places=2)
+        self.assertAlmostEqual(sg['means']['evening'], 3.0, places=2)
+        self.assertEqual(sg['verdict'], 'recommended')
+        self.assertLess(sg['validation']['after'], 0.05)
+        self.assertEqual(sg['neighbours'], 3)
+
+    def test_uses_the_sensors_own_readings(self):
+        from weather import calibration
+        from weather.models import TempCalibration
+        cal = TempCalibration.objects.create(
+            station=self.station, mode='manual', start=dt.datetime(2026, 7, 3, tzinfo=UTC), status='pending',
+            coefficients={str(m): {'night': -1.0, 'day': 0.0, 'solar': 0.0} for m in range(1, 13)})
+        calibration.apply_calibration(cal)
+        self.assertAlmostEqual(neighbours.suggest_calibration(self.station, *self.DAYS)['coefficients']['night'],
+                               -1.0, places=2)
+
+    def test_too_few_readings(self):
+        sg = neighbours.suggest_calibration(self.station, dt.date(2026, 6, 1), dt.date(2026, 6, 2))
+        self.assertIsNone(sg['coefficients'])
+
+    def test_range_starts_at_the_first_reading(self):
+        self.assertEqual(neighbours.calibration_range(self.station, today=dt.date(2026, 7, 9)),
+                         (dt.date(2026, 6, 30), dt.date(2026, 7, 9)))
+
+    def test_pages(self):
+        from weather.models import TempCalibration
+        owner = self.station.owner
+        TOTPDevice.objects.create(user=owner, name='phone', confirmed=True)
+        self.client.force_login(owner)
+        url = reverse('weather:station-neighbours', args=[self.station.slug])
+        with override_settings(WU_API_KEY=KEY):
+            html = self.client.get(url).content.decode()
+            self.assertIn('For calibration', html)
+            self.assertNotIn('Suggested correction', html)
+            html = self.client.get(url, {'cal_start': '2026-07-01', 'cal_end': '2026-07-06'}).content.decode()
+        self.assertIn('Suggested correction', html)
+        self.assertIn('Recommended', html)
+        self.assertIn('cal_mode=neighbours&amp;compare_start=2026-07-01&amp;compare_end=2026-07-06', html)
+
+        quality = reverse('weather:station-quality', args=[self.station.slug])
+        html = self.client.get(quality, {'cal_mode': 'neighbours', 'compare_start': '2026-07-01',
+                                         'compare_end': '2026-07-06'}).content.decode()
+        self.assertIn('Fitted to neighbours', html)
+        self.assertIn('value="2026-07-01"', html)
+        response_ = self.client.post(quality, {'form': 'calibration', 'cal-mode': 'neighbours', 'cal-start': '2026-07-01T00:00',
+                                               'cal-compare_start': '2026-07-01', 'cal-compare_end': '2026-07-06'}, follow=True)
+        c = TempCalibration.objects.get()
+        self.assertEqual((c.mode, c.status, c.baseline_start), ('neighbours', 'fitted', dt.date(2026, 7, 1)))
+        self.assertAlmostEqual(c.coefficients['12']['night'], -1.0, places=2)
+        self.assertContains(response_, 'Review it below')
+        # Outside the readings: refused.
+        c.delete()
+        self.assertContains(self.client.post(quality, {'form': 'calibration', 'cal-mode': 'neighbours',
+                                                       'cal-start': '2026-07-01T00:00', 'cal-compare_start': '2026-05-01',
+                                                       'cal-compare_end': '2026-07-06'}), 'Neighbour readings cover')
+        self.assertFalse(TempCalibration.objects.exists())
+
+    def test_no_neighbours_option_without_readings(self):
+        from weather.forms import CalibrationForm
+        from weather.units import UnitPrefs
+        NeighbourReading.objects.all().delete()
+        form = CalibrationForm(station=self.station, prefs=UnitPrefs())
+        self.assertNotIn('neighbours', [k for k, _ in form.fields['mode'].choices])

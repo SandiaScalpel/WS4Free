@@ -7,6 +7,22 @@ each release for anything you need to do beyond the usual steps in the README.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **Calibration from neighbours**: Manage → Neighbours → **For calibration**
+  suggests a temperature correction from your Weather Underground neighbours
+  over days you choose: a night offset (from astronomical dusk until just after
+  sunrise) and a daytime one that grows with sunshine, tested on days the fit
+  didn't use, with a recommendation whether to apply it. **Use for a
+  calibration…** carries it to Data quality, where **Fitted to neighbours** is
+  a third calibration method beside the reference station and manual.
+
+### Upgrading
+
+- Run `python manage.py migrate` (Docker does this for you).
+
 ## 1.4.0 — 2026-10-07
 
 ### Added

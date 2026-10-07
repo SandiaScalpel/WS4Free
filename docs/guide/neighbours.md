@@ -69,5 +69,10 @@ Your readings are compared as they're stored, so a
 [temperature calibration](data-quality.md#temperature-calibration) you've
 applied is included.
 
+Those who manage the station also get **For calibration**: pick a period and
+WS4Free suggests a temperature correction from the neighbours, separately for
+night and while the sun is up, which you can then apply on the Data quality page.
+See [Fitted to neighbours](data-quality.md#fitted-to-neighbours).
+
 Neighbours' readings are only used for this comparison. They're never shown to
 visitors or mixed into your station's data.

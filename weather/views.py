@@ -486,7 +486,9 @@ def station_quality(request, slug):
         cal_form = CalibrationForm(request.POST, station=station, prefs=prefs, prefix='cal')
         if cal_form.is_valid():
             cal = cal_form.save(request.user)
-            if cal.mode == 'reference':
+            if cal.mode == 'neighbours':
+                messages.success(request, 'Correction fitted to the neighbours. Review it below, then apply it.')
+            elif cal.mode == 'reference':
                 calibration.launch(cal, 'fit')
                 messages.success(request, f'Fetching {cal.reference_station} data and fitting the correction. '
                                           'This takes a few minutes; review it here before applying.')
@@ -520,7 +522,18 @@ def station_quality(request, slug):
             initial['reason'] = request.GET['reason'][:200]
         form = ExclusionForm(initial=initial, station=station)
     if cal_form is None:
-        cal_form = CalibrationForm(station=station, prefs=prefs, prefix='cal')
+        cal_initial = {}
+        if request.GET.get('cal_mode') == 'neighbours':
+            try:
+                compare_start = dt.date.fromisoformat(request.GET['compare_start'])
+                compare_end = dt.date.fromisoformat(request.GET['compare_end'])
+            except (KeyError, ValueError):
+                pass
+            else:
+                cal_initial = {'mode': 'neighbours', 'compare_start': compare_start, 'compare_end': compare_end,
+                               'start': dt.datetime.combine(compare_start, dt.time(), tzinfo=station.tzinfo),
+                               'reason': 'Fitted to the neighbours'}
+        cal_form = CalibrationForm(initial=cal_initial, station=station, prefs=prefs, prefix='cal')
     exclusions = station.exclusions.select_related('created_by')
     calibrations = list(station.calibrations.select_related('created_by'))
     return render(request, 'weather/station_quality.html', {
@@ -866,6 +879,7 @@ def station_neighbours(request, slug):
                 (n.elevation_m - station.elevation_m) * (3.28084 if prefs.temp == 'F' else 1)),
             'temp_offset': offset.get('temp_c'), 'humidity_offset': offset.get('humidity'),
         })
+    can_manage = access.can_manage(request.user, station)
     latest = getattr(station, 'latest', None)
     ours_now = dashboard.live_values(station, latest)
     live = neighbour_data.live(station, now)
@@ -873,7 +887,8 @@ def station_neighbours(request, slug):
         live['temp_diff'] = _diff(ours_now.get('temp_c'), live['temp_c'])
         live['humidity_diff'] = _diff(ours_now.get('humidity'), live['humidity'])
     return render(request, 'weather/station_neighbours.html', {
-        'station': station, 'tab': 'neighbours', 'can_manage': access.can_manage(request.user, station),
+        'station': station, 'tab': 'neighbours', 'can_manage': can_manage,
+        'for_calibration': _neighbour_calibration(request, station) if can_manage else None,
         'key_set': bool(settings.WU_API_KEY),
         'poll_minutes': settings.WU_POLL_MINUTES,
         'neighbours': rows,
@@ -895,6 +910,28 @@ def station_neighbours(request, slug):
                         'humidity': [_round(v, 1) for v in result['by_hour']['humidity']]},
         },
     })
+
+
+def _neighbour_calibration(request, station):
+    """The "For calibration" section: a period (local dates, from the first neighbour
+    reading to today) and the calibration the neighbours suggest for it."""
+    bounds = neighbour_data.calibration_range(station)
+    if bounds is None:
+        return None
+    first, last = bounds
+
+    def date_param(name, default):
+        try:
+            return min(max(dt.date.fromisoformat(request.GET.get(name, '')), first), last)
+        except ValueError:
+            return default
+    start, end = date_param('cal_start', first), date_param('cal_end', last)
+    if end < start:
+        start, end = end, start
+    out = {'first': first, 'last': last, 'start': start, 'end': end}
+    if 'cal_start' in request.GET:
+        out['suggestion'] = neighbour_data.suggest_calibration(station, start, end)
+    return out
 
 
 def _diff(a, b):
