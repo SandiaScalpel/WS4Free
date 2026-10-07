@@ -21,6 +21,10 @@ class UserProfile(models.Model):
     # Consecutive logins with a weak password (capped at 10); see accounts.signals.
     weak_password_logins = models.PositiveSmallIntegerField(default=0)
     password_strength_warning = models.BooleanField(default=False)
+    # Set by site administrators: whether a non-administrator may add stations of their
+    # own, and how many they may own in all (weather.access.can_add_station).
+    may_add_stations = models.BooleanField('may add their own stations', default=False)
+    station_limit = models.PositiveSmallIntegerField('how many', default=1)
 
     def __str__(self):
         return f'Profile for {self.user}'

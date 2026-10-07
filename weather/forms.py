@@ -313,7 +313,7 @@ class StationEventForm(forms.ModelForm):
         labels = {'kind': 'Type', 'is_public': 'Show to visitors'}
         widgets = {'notes': forms.Textarea(attrs={'rows': 3}),
                    'title': forms.TextInput(attrs={'placeholder': 'e.g. Moved 80 ft southwest, away from the house'})}
-        help_texts = {'is_public': 'Public entries appear as markers on the charts for everyone; private ones only for you.'}
+        help_texts = {'is_public': 'Public entries appear as markers on the charts for everyone; private ones only for people with access to the station.'}
 
     def __init__(self, *args, station, **kwargs):
         super().__init__(*args, **kwargs)
@@ -345,7 +345,9 @@ class StationEventForm(forms.ModelForm):
 
 
 class StationCreateForm(forms.ModelForm):
-    """A new station, added by a site administrator from the app."""
+    """A new station, added by a site administrator from the app, for themselves or another user."""
+    owner = forms.ModelChoiceField(queryset=None, required=False, empty_label=None,
+                                   help_text='Who it belongs to: they manage it and decide who else sees it.')
 
     class Meta:
         model = Station
@@ -365,6 +367,18 @@ class StationCreateForm(forms.ModelForm):
             'longitude': forms.NumberInput(attrs={'step': 'any'}),
         }
 
+    def __init__(self, *args, staff=True, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not staff:
+            # A user adding their own station: always theirs, and no MAC address, which only
+            # the site's Ambient API gap-filling needs (not offered for users' stations).
+            del self.fields['owner'], self.fields['mac_address']
+            return
+        from django.contrib.auth import get_user_model
+        self.fields['owner'].queryset = get_user_model().objects.filter(is_active=True).order_by('username')
+        self.fields['owner'].label_from_instance = lambda u: (f'{u.get_full_name()} ({u.get_username()})'
+                                                              if u.get_full_name() else u.get_username())
+
     def clean_mac_address(self):
         from .models import normalize_mac
         raw = (self.cleaned_data.get('mac_address') or '').strip()
@@ -381,6 +395,7 @@ class StationCreateForm(forms.ModelForm):
         station = super().save(commit=False)
         station.owner = owner
         # The Ambient API can only be polled for an Ambient station with a MAC address.
-        station.ambient_api_enabled = station.source == Station.SOURCE_AMBIENT and bool(station.mac_address)
+        station.ambient_api_enabled = (station.source == Station.SOURCE_AMBIENT and bool(station.mac_address)
+                                       and owner.is_staff)
         station.save()
         return station

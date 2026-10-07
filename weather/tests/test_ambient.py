@@ -101,7 +101,9 @@ class ClientTests(SimpleTestCase):
 
 class CommandTests(TestCase):
     def setUp(self):
-        self.station = make_station()
+        from django.contrib.auth import get_user_model
+        admin = get_user_model().objects.create_user('owner', is_staff=True)      # the site's API keys
+        self.station = make_station(owner=admin)
 
     def _patch_client(self, **methods):
         fake = mock.Mock(**{f'{name}.return_value': value for name, value in methods.items() if name != 'iter_history'})

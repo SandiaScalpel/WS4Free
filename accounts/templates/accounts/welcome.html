@@ -1,0 +1,21 @@
+{% extends "two_factor/_base_focus.html" %}
+{% block title %}Welcome · WS4Free{% endblock %}
+{% block content %}
+<div class="mb-6 flex flex-col items-center text-center">
+  {% include "weather/partials/logo.html" with class="mb-4 size-12" %}
+  <h1 class="text-2xl font-bold">{% if validlink %}Choose a password{% else %}This link doesn't work{% endif %}</h1>
+  {% if validlink %}
+  <p class="mt-1.5 text-sm text-muted">For <span class="font-medium text-ink">{{ form.user.get_username }}</span>. At least 12 characters; a long passphrase is easiest.</p>
+  {% endif %}
+</div>
+{% if validlink %}
+<form method="post" class="space-y-4">
+  {% csrf_token %}
+  {{ form.as_div }}
+  <button type="submit" class="btn btn-primary btn-block mt-2">Set password</button>
+</form>
+{% else %}
+<p class="text-sm text-muted">It has already been used, has expired (links last 3 days), or was copied incompletely. Ask the site's administrator for a new one.</p>
+<a href="{% url 'two_factor:login' %}" class="btn btn-secondary btn-block mt-6">Sign in</a>
+{% endif %}
+{% endblock %}

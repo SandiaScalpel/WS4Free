@@ -1,9 +1,9 @@
-{% load weather_units %}{# Station name, place, switcher and Overview/Charts tabs. Needs station, tab, other_stations, can_manage. #}
+{% load weather_units %}{# Station name, place, switcher and Overview/Charts tabs. Needs station, tab, other_stations, can_see_management. #}
 <header class="flex flex-wrap items-end justify-between gap-4">
   <div>
     <div class="flex flex-wrap items-center gap-3">
       <h1 class="text-3xl font-bold">{{ station.name }}</h1>
-      {% if can_manage and not station.is_public %}<span class="badge bg-surface-2 text-muted" title="Only you can see this station">Private</span>{% endif %}
+      {% if can_see_private and not station.is_public %}<span class="badge bg-surface-2 text-muted" title="Visitors can't see this station">Private</span>{% endif %}
     </div>
     {% if station.place %}<p class="mt-1 text-muted">{{ station.place }}</p>{% endif %}
   </div>
@@ -19,7 +19,7 @@
       </div>
     </div>
     {% endif %}
-    {% if can_manage %}<a href="{% url 'weather:station-settings' station.slug %}" class="btn btn-secondary btn-sm">Manage</a>{% endif %}
+    {% if can_see_management %}<a href="{% url 'weather:station-settings' station.slug %}" class="btn btn-secondary btn-sm">Manage</a>{% endif %}
   </div>
 </header>
 <nav class="mt-5 flex gap-1 overflow-x-auto border-b border-line whitespace-nowrap" aria-label="{{ station.name }}">

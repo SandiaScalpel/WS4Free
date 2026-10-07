@@ -21,7 +21,7 @@ def user(name, staff=False):
 
 class SourceTests(TestCase):
     def setUp(self):
-        self.owner = user('owner')
+        self.owner = user('owner', staff=True)       # the MAC / Ambient API settings are for administrators' stations
         self.client.force_login(self.owner)
 
     def settings_post(self, station, **data):

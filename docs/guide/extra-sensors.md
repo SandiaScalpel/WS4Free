@@ -70,8 +70,8 @@ kind:
 - lightning strikes so far today, and the time and distance of the last strike;
 - leak sensors as *Dry*, *Leak!* or *Offline*.
 
-The owner also sees **Low battery** warnings for any sensor whose console
-reports it.
+The owner, managers and advanced viewers also see **Low battery** warnings for
+any sensor whose console reports it.
 
 ## In charts
 

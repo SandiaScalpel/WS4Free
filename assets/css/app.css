@@ -127,6 +127,10 @@
   input[type="checkbox"], input[type="radio"] {
     @apply size-4 accent-(--ws-accent);
   }
+  /* Read-only forms (advanced viewers) and individually disabled fields. */
+  input:disabled:not([type="checkbox"], [type="radio"]), select:disabled, textarea:disabled {
+    @apply cursor-not-allowed bg-surface-2 text-muted shadow-none;
+  }
   label {
     @apply mb-1.5 block text-sm font-medium text-ink;
   }

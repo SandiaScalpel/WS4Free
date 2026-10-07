@@ -1,0 +1,46 @@
+{% extends "weather/base_generic.html" %}
+{% block title %}Users · {{ site.site_title }}{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-5xl">
+  <div class="flex flex-wrap items-end justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-bold">Users</h1>
+      <p class="mt-1 text-sm text-muted">Everyone who can sign in. Share a station with someone from that station's <span class="font-medium text-ink">Manage → People</span> tab.</p>
+    </div>
+    <a href="{% url 'accounts:user-create' %}" class="btn btn-primary">Add a user</a>
+  </div>
+  <div class="card relative mt-6 overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="text-xs text-muted">
+        <tr class="border-b border-line">
+          <th scope="col" class="px-5 py-3 text-left font-medium">User</th>
+          <th scope="col" class="px-5 py-3 text-left font-medium">Stations</th>
+          <th scope="col" class="px-5 py-3 text-left font-medium">Two-factor</th>
+          <th scope="col" class="px-5 py-3 text-left font-medium">Last sign-in</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-line">
+        {% for r in rows %}
+        <tr class="{% if not r.u.is_active %}text-faint{% endif %}">
+          <td class="px-5 py-3 align-top">
+            <a href="{% url 'accounts:user-detail' r.u.pk %}" class="font-medium">{{ r.u.get_username }}</a>
+            {% if r.u.is_staff %}<span class="badge ml-1 bg-accent-soft text-accent">Administrator</span>{% endif %}
+            {% if not r.u.is_active %}<span class="badge ml-1 bg-surface-2 text-faint">Deactivated</span>{% elif not r.u.has_usable_password %}<span class="badge ml-1 bg-warn/15 text-warn">Invited</span>{% endif %}
+            {% if r.u.get_full_name %}<div class="text-muted">{{ r.u.get_full_name }}</div>{% endif %}
+          </td>
+          <td class="px-5 py-3 align-top text-muted">
+            {% if r.u.is_staff %}All{% endif %}
+            {% for s in r.owned %}<div><a href="{% url 'weather:station' s.slug %}">{{ s.name }}</a> · owner</div>{% endfor %}
+            {% for s, role in r.shared %}<div><a href="{% url 'weather:station' s.slug %}">{{ s.name }}</a> · {{ role|lower }}</div>{% endfor %}
+            {% if not r.u.is_staff and not r.owned and not r.shared %}<span class="text-faint">Public stations only</span>{% endif %}
+            {% if r.allowance %}<div class="text-xs text-faint">May own up to {{ r.allowance }}</div>{% endif %}
+          </td>
+          <td class="px-5 py-3 align-top">{% if r.two_factor %}<span class="text-good">On</span>{% else %}<span class="text-muted">Off</span>{% endif %}</td>
+          <td class="px-5 py-3 align-top whitespace-nowrap text-muted">{{ r.u.last_login|date:"M j, Y"|default:"Never" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

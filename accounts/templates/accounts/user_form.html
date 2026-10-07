@@ -1,0 +1,20 @@
+{% extends "weather/base_generic.html" %}
+{% block title %}Add a user · {{ site.site_title }}{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-2xl">
+  <a href="{% url 'accounts:users' %}" class="text-sm no-underline">&larr; Users</a>
+  <h1 class="mt-2 text-2xl font-bold">Add a user</h1>
+  <p class="mt-1 text-sm text-muted">You'll get a one-time welcome link to send them, where they choose their own password. It works once, for 3 days.</p>
+  <form method="post" class="card mt-6 p-6" novalidate>
+    {% csrf_token %}
+    {% include "weather/partials/field.html" with field=form.username %}
+    <div class="grid gap-x-4 sm:grid-cols-2 [&_.field+.field]:mt-0">
+      {% include "weather/partials/field.html" with field=form.first_name %}
+      {% include "weather/partials/field.html" with field=form.last_name %}
+    </div>
+    {% include "weather/partials/field.html" with field=form.email %}
+    {% include "accounts/partials/staff_field.html" with field=form.is_staff %}
+    <div class="mt-6 flex justify-end"><button type="submit" class="btn btn-primary">Add user</button></div>
+  </form>
+</div>
+{% endblock %}

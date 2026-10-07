@@ -3,7 +3,9 @@
 Is your station reading warm, or is it just a warm afternoon? The
 **Neighbours** tab (under **Manage**) compares your temperature and humidity
 with nearby stations on [Weather Underground](https://www.wunderground.com/),
-reading for reading. Only the station's owner sees it.
+reading for reading. Its owner, managers and advanced viewers see it (see
+[Users and access](users.md)); it's available on stations owned by a site
+administrator, because it uses the site's Weather Underground key.
 
 ## What you need
 
@@ -48,7 +50,8 @@ reporting, it simply averages them.)
 Readings that failed Weather Underground's own quality check are ignored.
 
 - **Right now**: your latest reading, the neighbours' average, and the
-  difference. The owner also sees the neighbours' average on the dashboard,
+  difference. The owner (and managers and advanced viewers) also see the
+  neighbours' average on the dashboard,
   under *Feels like*.
 - **You compared with your neighbours**: over 24 hours, 7 or 30 days, your
   reading minus the neighbours' average, overall and separately for when the sun

@@ -132,7 +132,9 @@ python manage.py runserver
 ```
 
 Sign-in uses two-factor authentication (authenticator app or passkey). You are
-prompted to set it up after your first login.
+prompted to set it up after your first login. Add other people under **Users**
+in the menu under your name; each station's **People** tab shares it with them
+as a viewer or manager.
 
 ## Database setup
 

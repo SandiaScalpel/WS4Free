@@ -7,6 +7,49 @@ each release for anything you need to do beyond the usual steps in the README.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [Semantic Versioning](https://semver.org/).
 
+## 1.4.0 — 2026-10-07
+
+### Added
+
+- **Users** (administrators, in the menu under your name): add people without
+  touching Django's admin. Each new user gets a one-time **welcome link**
+  (valid 3 days) to choose their own password; **New link** covers lost
+  invitations and forgotten passwords. Edit names and administrator access,
+  and **deactivate** or reactivate accounts. The site always keeps at least one
+  administrator, and you can't remove your own access.
+- **Sharing a station** (Manage → **People**, for the owner and
+  administrators): give other users access as a **viewer** (sees the station
+  even while private, with indoor readings, private sensors and private log
+  entries) or a **manager** (also batteries, neighbours, and every settings
+  and data tab, but not who has access, public/private, or ownership).
+  An **advanced viewer** sits between the two: everything a manager sees,
+  read-only, without the secret upload paths.
+- **Transfer ownership** on the same tab, optionally keeping the previous owner
+  on as a manager; recorded in the station log. Administrators can also choose
+  the owner when adding a station.
+- Administrators can let a user **add their own stations** (Users → the
+  user → **May add their own stations**), up to a number they choose (1 by
+  default). Such stations don't use the site's Ambient Weather or Weather
+  Underground keys: no gap-filling, no neighbours.
+- A signed-in user who owns a station now lands on **their own station**;
+  visitors and administrators still get the site's default station.
+- Guide page **Users and access**.
+
+### Changed
+
+- Gap-filling from ambientweather.net and neighbours now apply only to
+  stations owned by an administrator, since they use the site's API keys.
+- Deleting a user who owns a station is refused (it used to delete the station
+  and its history); transfer the station first. Deactivating a user from the
+  Users page transfers their stations to you.
+
+### Upgrading
+
+- Run `migrate` (two new migrations in `weather`, one in `accounts`), as usual.
+- If a station that uses ambientweather.net gap-filling or neighbours is owned
+  by a user who isn't a site administrator, those stop for it: transfer it to an
+  administrator, or make its owner one.
+
 ## 1.3.0 — 2026-10-07
 
 ### Changed

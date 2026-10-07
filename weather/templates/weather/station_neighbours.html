@@ -15,7 +15,7 @@
     Compare your temperature and humidity with nearby stations on Weather Underground. Their current conditions are
     fetched every {{ poll_minutes }} minutes and matched to your readings for the same five minutes. The comparison
     averages the neighbours after leaving out the highest and the lowest reading, so one badly placed
-    sensor doesn't skew it. Only you can see this page.
+    sensor doesn't skew it. Only those who manage this station (or are advanced viewers of it) can see this page.
   </p>
 
   {% if not key_set %}
@@ -52,7 +52,7 @@
       {% if neighbours %}<p class="text-xs {% if calls_per_day > daily_limit %}text-bad{% else %}text-faint{% endif %}">{{ calls_per_day|intcomma }} of Weather Underground's {{ daily_limit|intcomma }} requests a day</p>{% endif %}
     </div>
     {% if calls_per_day > daily_limit %}<p class="alert alert-warning mt-3" role="status">That's more than Weather Underground allows a day. Remove some stations, or poll less often (<code>WU_POLL_MINUTES</code> in <code>.env</code>).</p>{% endif %}
-    {% if key_set %}
+    {% if key_set and can_manage %}
     <form method="post" class="mt-4 flex flex-wrap items-end gap-3">
       {% csrf_token %}
       <div class="min-w-0 flex-1">
@@ -81,12 +81,12 @@
           {% if row.temp_offset %}<p class="mt-0.5 text-xs text-muted">Compared with the others: {{ row.temp_offset.0|temp_delta:units }}{% if row.humidity_offset %}, {{ row.humidity_offset.0|signed:0 }}% humidity{% endif %} <span class="text-faint">(average over {{ row.temp_offset.1|intcomma }} readings)</span></p>{% endif %}
           {% if n.last_error %}<p class="mt-0.5 text-xs text-warn">{{ n.last_error }}</p>{% endif %}
         </div>
-        <div class="flex shrink-0 gap-2">
+        {% if can_manage %}<div class="flex shrink-0 gap-2">
           <form method="post" action="{% url 'weather:station-neighbour-include' station.slug n.pk %}">{% csrf_token %}
             <button class="btn btn-secondary btn-sm">{% if n.include %}Leave out{% else %}Include{% endif %}</button></form>
           <form method="post" action="{% url 'weather:station-neighbour-delete' station.slug n.pk %}" onsubmit="return confirm('Remove {{ n.wu_id }} and its readings?')">{% csrf_token %}
             <button class="btn btn-ghost btn-sm">Remove</button></form>
-        </div>
+        </div>{% endif %}
       </li>
       {% endwith %}{% endfor %}
     </ul>

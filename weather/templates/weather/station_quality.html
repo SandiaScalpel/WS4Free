@@ -27,7 +27,7 @@
             · added {{ e.created_at|date:"M j, Y" }}{% if e.created_by %} by {{ e.created_by.get_username }}{% endif %}
           </p>
         </div>
-        {% if e.status == 'applied' or e.status == 'failed' %}
+        {% if can_manage and e.status == 'applied' or can_manage and e.status == 'failed' %}
         <form method="post" action="{% url 'weather:station-quality-remove' station.slug e.pk %}"
               onsubmit="return confirm('Restore the original readings for this period?')">
           {% csrf_token %}<button type="submit" class="btn btn-secondary btn-sm">Remove</button>
@@ -41,7 +41,7 @@
     {% endif %}
   </section>
 
-  <section class="card mt-8 p-6" aria-labelledby="add-title">
+  {% if can_manage %}<section class="card mt-8 p-6" aria-labelledby="add-title">
     <h2 id="add-title" class="text-base font-semibold">Exclude a period</h2>
     <p class="mt-1 text-sm text-muted">Times are in the station's time zone ({{ station.timezone }}).</p>
     <form method="post" class="mt-4 space-y-4" novalidate>
@@ -66,7 +66,7 @@
       {% include "weather/partials/field.html" with field=form.reason %}
       <div class="flex justify-end"><button type="submit" class="btn btn-primary">Exclude readings</button></div>
     </form>
-  </section>
+  </section>{% endif %}
 
   {# ── Temperature calibration ───────────────────────────────────────────── #}
   <section id="calibration" class="mt-12" {% if busy %}hx-get="{{ request.path }}" hx-trigger="every 4s" hx-select="#calibration" hx-swap="outerHTML" hx-headers='{"X-Poll": "1"}'{% endif %}>
@@ -94,7 +94,7 @@
             · added {{ c.created_at|date:"M j, Y" }}{% if c.mode == 'reference' and c.baseline_start %} · trusted period {{ c.baseline_start|date:"M j, Y" }} – {{ c.baseline_end|date:"M j, Y" }}{% endif %}
           </p>
         </div>
-        <div class="flex gap-2">
+        {% if can_manage %}<div class="flex gap-2">
           {% if c.status == 'fitted' %}
           <form method="post" action="{% url 'weather:station-calibration-apply' station.slug c.pk %}">{% csrf_token %}<button class="btn btn-primary btn-sm">Apply</button></form>
           {% endif %}
@@ -104,7 +104,7 @@
             {% csrf_token %}<button class="btn btn-secondary btn-sm">{% if c.status == 'applied' %}Remove{% else %}Discard{% endif %}</button>
           </form>
           {% endif %}
-        </div>
+        </div>{% endif %}
       </div>
 
       {% if c.validation.before %}
@@ -146,7 +146,7 @@
     </article>
     {% endfor %}
 
-    <div class="card mt-4 p-6" x-data="{ mode: '{{ cal_form.mode.value|default:'reference' }}' }">
+    {% if can_manage %}<div class="card mt-4 p-6" x-data="{ mode: '{{ cal_form.mode.value|default:'reference' }}' }">
       <h3 class="text-base font-semibold">Add a calibration</h3>
       <form method="post" class="mt-4 space-y-4" novalidate>
         {% csrf_token %}<input type="hidden" name="form" value="calibration">
@@ -184,7 +184,7 @@
         {% include "weather/partials/field.html" with field=cal_form.reason %}
         <div class="flex justify-end"><button type="submit" class="btn btn-primary" x-text="mode === 'reference' ? 'Fit correction' : 'Apply correction'">Fit correction</button></div>
       </form>
-    </div>
+    </div>{% elif not calibrations %}<p class="card mt-4 p-5 text-sm text-muted">No calibrations.</p>{% endif %}
   </section>
   {% endtimezone %}
 </div>

@@ -37,7 +37,8 @@ def validate_mac(value):
 
 
 class Station(models.Model):
-    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='stations')
+    # PROTECT: deleting a user must never take a station's history with it; transfer it first.
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='stations')
     name = models.CharField(max_length=100)
     slug = models.SlugField(max_length=100, unique=True, blank=True)
     SOURCE_AMBIENT, SOURCE_ECOWITT, SOURCE_WEEWX, SOURCE_OTHER = 'ambient', 'ecowitt', 'weewx', 'other'
@@ -125,6 +126,13 @@ class Station(models.Model):
     @property
     def tzinfo(self):
         return ZoneInfo(self.timezone)
+
+    @property
+    def uses_site_services(self):
+        """Owned by an active administrator: only such stations use the site's own Ambient
+        Weather and Weather Underground API keys (gap-filling, neighbours), which belong to
+        whoever runs the site. Stations users add for themselves don't."""
+        return self.owner.is_staff and self.owner.is_active
 
     @property
     def uses_ambient_api(self):
@@ -532,7 +540,7 @@ class StationEvent(models.Model):
     title = models.CharField(max_length=120)
     notes = models.TextField(blank=True)
     is_public = models.BooleanField('public', default=True,
-                                    help_text='Visitors see public entries on the charts; private ones only you see.')
+                                    help_text='Visitors see public entries on the charts; private ones only people with access to the station see.')
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -607,3 +615,25 @@ class SensorGateway(models.Model):
         self.push_token = _new_push_token()
         self.push_passkey = ''
         self.save(update_fields=['push_token', 'push_passkey'])
+
+
+class StationAccess(models.Model):
+    """Another user's access to a station (weather.access): a viewer sees it even when
+    it's private, with its indoor readings and private sensors; an advanced viewer also
+    sees everything a manager does, read-only; a manager also changes its settings and
+    data. The owner and site administrators need no row."""
+    VIEWER, ADVANCED, MANAGER = 'viewer', 'advanced', 'manager'
+    ROLE_CHOICES = [(VIEWER, 'Viewer'), (ADVANCED, 'Advanced viewer'), (MANAGER, 'Manager')]
+
+    station = models.ForeignKey(Station, on_delete=models.CASCADE, related_name='access')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='station_access')
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default=VIEWER)
+    added_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['station', 'user'], name='unique_station_access')]
+        ordering = ['user__username']
+
+    def __str__(self):
+        return f'{self.user} — {self.get_role_display()} of {self.station}'

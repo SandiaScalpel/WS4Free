@@ -140,9 +140,10 @@ def _sensor_charts(sensors, prefs):
     return charts
 
 
-def history(station, start, end, prefs, include_private=False):
+def history(station, start, end, prefs, include_private=False, batteries=False):
     """Columnar series for (start, end]. Times are epoch ms of each bucket's start.
-    Extra sensors the viewer may see are added as `x:<upload key>` columns."""
+    Extra sensors the viewer may see are added as `x:<upload key>` columns; low-battery
+    periods only with `batteries` (those who manage the station)."""
     res = resolution_for(start, end)
     d = prefs.digits
     sensors = [(s, n) for s, n in station_sensors(station, include_private) if s.chartable]
@@ -214,8 +215,8 @@ def history(station, start, end, prefs, include_private=False):
         'end': int(end.timestamp() * 1000),
         'series': dict(zip(names, columns)),
         'sensor_charts': _sensor_charts(sensors, prefs),
-        # Low-battery periods are for the owner, like the dashboard's battery warning.
-        'battery': battery_periods(battery, step_ms) if include_private else [],
+        # Low-battery periods are for those who manage the station, like the dashboard's battery warning.
+        'battery': battery_periods(battery, step_ms) if batteries else [],
     }
 
 

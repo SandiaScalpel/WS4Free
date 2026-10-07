@@ -2,11 +2,13 @@
 
 ## Station settings
 
-Owners reach these from **Manage** on any station page.
+Owners and managers reach these from **Manage** on any station page; advanced
+viewers see them read-only.
 
-- **Visibility**: **Public** lets anyone view the station without signing in;
-  **Private** shows it only to you. Settings, the upload address and the upload
-  log are never public.
+- **Visibility** (owners only): **Public** lets anyone view the station without
+  signing in; **Private** shows it only to you, the people you share it with
+  (see [Users and access](users.md)) and the site's administrators. Settings,
+  the upload address and the upload log are never public.
 - **Name** and **place** ("Boulder, Colorado"), shown at the top of every page.
 - **Time zone**: defines the station's local day, so daily highs and lows,
   rain totals and the midnight rain reset follow your clock. Changing it
@@ -23,6 +25,8 @@ Owners reach these from **Manage** on any station page.
   (Ambient stations), which **rain sensor** to record when the console has two
   (Ecowitt and others), and whether to show the **forecast** on the dashboard.
   The MAC address can be entered once, if the station doesn't have one yet.
+  The MAC address and gap-filling appear only on stations owned by a site
+  administrator, since they use the site's Ambient Weather keys.
 - **Extra sensors**: names and public switches; see
   [Extra sensors](extra-sensors.md).
 
@@ -37,7 +41,8 @@ Entries appear on the **Charts** tab as dashed vertical markers, labelled with
 their type on the top chart; hover near one to read it. That way anyone looking
 at the history later can see why the readings changed, for example a jump in
 wind speed after the station was moved to a more open spot. Entries are
-public by default; untick **Show to visitors** to keep one to yourself.
+public by default; untick **Show to visitors** to keep one to yourself and the
+people you share the station with.
 
 ## Console, data quality and log tabs
 

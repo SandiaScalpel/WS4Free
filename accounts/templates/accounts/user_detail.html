@@ -1,0 +1,90 @@
+{% extends "weather/base_generic.html" %}
+{% block title %}{{ subject.get_username }} · Users · {{ site.site_title }}{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-3xl">
+  <a href="{% url 'accounts:users' %}" class="text-sm no-underline">&larr; Users</a>
+  <div class="mt-2 flex flex-wrap items-center gap-3">
+    <h1 class="text-2xl font-bold">{{ subject.get_username }}</h1>
+    {% if subject.is_staff %}<span class="badge bg-accent-soft text-accent">Administrator</span>{% endif %}
+    {% if not subject.is_active %}<span class="badge bg-surface-2 text-faint">Deactivated</span>{% elif not has_password %}<span class="badge bg-warn/15 text-warn">Invited</span>{% endif %}
+  </div>
+  <p class="mt-1 text-sm text-muted">Joined {{ subject.date_joined|date:"M j, Y" }} · last sign-in {{ subject.last_login|date:"M j, Y H:i"|default:"never" }} · two-factor {% if two_factor %}on{% else %}off{% endif %}</p>
+
+  {% if link %}
+  <section class="card mt-6 p-6 ring-2 ring-accent/40" x-data="{ copied: false }">
+    <h2 class="text-base font-semibold">Welcome link</h2>
+    <p class="mt-1 text-sm text-muted">Send this to {{ subject.get_full_name|default:subject.get_username }} yourself (WS4Free doesn't send email). It's shown only now, works once and expires in 3 days.</p>
+    <div class="mt-3 flex flex-col gap-2 sm:flex-row">
+      <input type="text" readonly value="{{ link }}" class="min-w-0 flex-1 font-mono text-xs" x-ref="link" @focus="$el.select()">
+      <button type="button" class="btn btn-secondary" @click="navigator.clipboard.writeText($refs.link.value).then(() => copied = true)" x-text="copied ? 'Copied' : 'Copy'">Copy</button>
+    </div>
+  </section>
+  {% endif %}
+
+  <form method="post" class="card mt-6 p-6" novalidate>
+    {% csrf_token %}
+    <h2 class="text-base font-semibold">Details</h2>
+    <div class="mt-4 grid gap-x-4 sm:grid-cols-2 [&_.field+.field]:mt-0">
+      {% include "weather/partials/field.html" with field=form.first_name %}
+      {% include "weather/partials/field.html" with field=form.last_name %}
+    </div>
+    {% include "weather/partials/field.html" with field=form.email %}
+    {% include "accounts/partials/staff_field.html" with field=form.is_staff %}
+    <div class="mt-4 rounded-lg border border-line p-4" x-data="{ may: {{ allowance.may_add_stations.value|yesno:'true,false' }} }">
+      <div class="flex items-start gap-3">
+        <input type="checkbox" name="{{ allowance.may_add_stations.html_name }}" id="{{ allowance.may_add_stations.id_for_label }}" class="mt-0.5" x-model="may" {% if allowance.may_add_stations.value %}checked{% endif %}>
+        <div>
+          <label for="{{ allowance.may_add_stations.id_for_label }}" class="m-0 font-medium">May add their own stations</label>
+          <p class="form-help">{{ allowance.may_add_stations.help_text }} Administrators can always add stations.</p>
+        </div>
+      </div>
+      <div class="mt-3 max-w-sm pl-7 [&_input]:max-w-32" x-show="may" x-cloak>{% include "weather/partials/field.html" with field=allowance.station_limit %}</div>
+    </div>
+    <div class="mt-6 flex justify-end"><button type="submit" class="btn btn-primary">Save</button></div>
+  </form>
+
+  <section class="card mt-6 p-6">
+    <h2 class="text-base font-semibold">Stations</h2>
+    {% if subject.is_staff %}<p class="mt-1 text-sm text-muted">As an administrator they see and manage every station.</p>{% endif %}
+    {% if owned or shared %}
+    <ul class="mt-3 divide-y divide-line text-sm">
+      {% for s in owned %}<li class="flex justify-between gap-4 py-2"><a href="{% url 'weather:station' s.slug %}">{{ s.name }}</a><span class="text-muted">Owner · <a href="{% url 'weather:station-people' s.slug %}">transfer</a></span></li>{% endfor %}
+      {% for a in shared %}<li class="flex justify-between gap-4 py-2"><a href="{% url 'weather:station' a.station.slug %}">{{ a.station.name }}</a><span class="text-muted">{{ a.get_role_display }} · <a href="{% url 'weather:station-people' a.station.slug %}">change</a></span></li>{% endfor %}
+    </ul>
+    {% elif not subject.is_staff %}
+    <p class="mt-1 text-sm text-muted">None yet: they see public stations only. Share a station from its <span class="font-medium text-ink">Manage → People</span> tab.</p>
+    {% endif %}
+  </section>
+
+  {% if subject.is_active %}
+  <section class="card mt-6 p-6">
+    <h2 class="text-base font-semibold">{% if has_password %}Password{% else %}Invitation{% endif %}</h2>
+    <p class="mt-1 text-sm text-muted">{% if has_password %}Forgotten password? A new link lets them choose another; their current one keeps working until they use it.{% else %}They haven't chosen a password yet. Lost or expired link? Make a new one.{% endif %}</p>
+    <form method="post" action="{% url 'accounts:user-new-link' subject.pk %}" class="mt-4">{% csrf_token %}
+      <button type="submit" class="btn btn-secondary">New link</button>
+    </form>
+  </section>
+  {% endif %}
+
+  {% if subject.pk != user.pk %}
+  <section class="card mt-6 p-6">
+    <h2 class="text-base font-semibold">{% if subject.is_active %}Deactivate{% else %}Reactivate{% endif %}</h2>
+    {% if subject.is_active %}
+    <p class="mt-1 text-sm text-muted">They're signed out at once and can't sign in again; their access to shared stations is removed. Nothing is deleted, and you can reactivate them later.{% if owned %} They own {{ owned|length }} station{{ owned|length|pluralize }}: {% for s in owned %}{{ s.name }}{% if not forloop.last %}, {% endif %}{% endfor %}, which will be transferred to you.{% endif %}</p>
+    <form method="post" action="{% url 'accounts:user-set-active' subject.pk %}" class="mt-4"
+          x-data @submit="if (!confirm('Deactivate {{ subject.get_username|escapejs }}?')) $event.preventDefault()">{% csrf_token %}
+      <input type="hidden" name="active" value="0">
+      {% if owned %}<input type="hidden" name="take_stations" value="1">{% endif %}
+      <button type="submit" class="btn btn-danger">{% if owned %}Transfer their stations to me and deactivate{% else %}Deactivate{% endif %}</button>
+    </form>
+    {% else %}
+    <p class="mt-1 text-sm text-muted">Let them sign in again. Station access isn't restored; share stations with them again from each station's People tab.</p>
+    <form method="post" action="{% url 'accounts:user-set-active' subject.pk %}" class="mt-4">{% csrf_token %}
+      <input type="hidden" name="active" value="1">
+      <button type="submit" class="btn btn-secondary">Reactivate</button>
+    </form>
+    {% endif %}
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

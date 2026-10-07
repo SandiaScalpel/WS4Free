@@ -28,7 +28,7 @@ Measured extremes count even on a day with gaps. Whole-day records (warmest
 night, coldest day) need at least 90% of the day recorded, so a day the sensor
 was offline can't set a false record. A dry spell ends at any day without data.
 
-If a record looks wrong, the owner sees **Exclude these readings…** beside it,
+If a record looks wrong, the owner (or a manager) sees **Exclude these readings…** beside it,
 which opens [Data quality](data-quality.md) with that day filled in.
 
 ## Frost dates

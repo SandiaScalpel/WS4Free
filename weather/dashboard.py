@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from django.db.models import Sum
 from django.utils import timezone
 
+from . import access
 from . import forecast as forecasts
 from . import neighbours as neighbour_data
 from . import sensors as sensor_catalog
@@ -132,8 +133,9 @@ def build(station, prefs, viewer=None, now=None):
     temp = data.get('temp_c')
     age = (now - latest.timestamp) if latest else None
     change = _pressure_change(station, latest)
-    can_see_private = viewer is not None and viewer.is_authenticated and (
-        viewer.is_staff or viewer.pk == station.owner_id)
+    can_see_private = access.can_see_private(viewer, station)
+    can_manage = access.can_manage(viewer, station)
+    can_see_management = access.can_see_management(viewer, station)
 
     return {
         'station': station,
@@ -162,11 +164,13 @@ def build(station, prefs, viewer=None, now=None):
         'forecast': forecasts.display(forecasts.current(station, now=now), prefs, today),
         'sensor_groups': sensor_catalog.dashboard_groups(station, sensors_now, rollup.extra if rollup else {}, prefs,
                                                          exclude={f[2:] for f in excluded if f.startswith('x:')},
-                                                         include_private=can_see_private, batteries=can_see_private),
-        'low_batteries': sensor_catalog.low_batteries(sensors_now.extra, sensors_now.source) if can_see_private else [],
-        'neighbours': _neighbours(station, data, now) if can_see_private else None,
+                                                         include_private=can_see_private, batteries=can_see_management),
+        'low_batteries': sensor_catalog.low_batteries(sensors_now.extra, sensors_now.source) if can_see_management else [],
+        'neighbours': _neighbours(station, data, now) if can_see_management and station.uses_site_services else None,
         'show_indoor': can_see_private and (data.get('temp_in_c') is not None or data.get('humidity_in') is not None),
-        'can_manage': can_see_private,
+        'can_manage': can_manage,
+        'can_see_private': can_see_private,
+        'can_see_management': can_see_management,
         'chart_data': {
             'units': prefs.as_json(),
             'tz': station.timezone,

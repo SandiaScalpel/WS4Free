@@ -29,7 +29,8 @@ class Command(BaseCommand):
         parser.add_argument('--station', help='Slug of a single station (default: all with polling enabled).')
 
     def handle(self, *args, station=None, **options):
-        stations = Station.objects.filter(ambient_api_enabled=True, source=Station.SOURCE_AMBIENT, mac_address__isnull=False)
+        stations = Station.objects.filter(ambient_api_enabled=True, source=Station.SOURCE_AMBIENT, mac_address__isnull=False,
+                                          owner__is_staff=True, owner__is_active=True)   # the site's keys
         if station:
             stations = stations.filter(slug=station)
         stations = list(stations)

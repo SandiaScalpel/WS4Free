@@ -11,7 +11,7 @@
     the Charts tab, so anyone reading the history later knows why the readings changed.
   </p>
 
-  <section class="card mt-6 p-6" aria-labelledby="log-form-title">
+  {% if can_manage %}<section class="card mt-6 p-6" aria-labelledby="log-form-title">
     <h2 id="log-form-title" class="text-base font-semibold">{% if editing %}Edit entry{% else %}Add an entry{% endif %}</h2>
     <form method="post" action="{% if editing %}{% url 'weather:station-log-edit' station.slug editing.pk %}{% else %}{% url 'weather:station-log' station.slug %}{% endif %}" class="mt-4 space-y-4" novalidate>
       {% csrf_token %}
@@ -35,7 +35,7 @@
         <button type="submit" class="btn btn-primary">{% if editing %}Save entry{% else %}Add entry{% endif %}</button>
       </div>
     </form>
-  </section>
+  </section>{% endif %}
 
   <section class="mt-8" aria-labelledby="log-title">
     <h2 id="log-title" class="text-base font-semibold">Log</h2>
@@ -45,16 +45,16 @@
         <div class="min-w-0">
           <p class="text-xs text-faint">{{ e.occurred_at|date:"D M j, Y" }}{% if e.has_time %} · {{ e.occurred_at|date:"g:i A" }}{% endif %}
             <span class="badge ml-1 bg-surface-2 text-muted">{{ e.get_kind_display }}</span>
-            {% if not e.is_public %}<span class="badge ml-1 bg-surface-2 text-faint" title="Only you can see this">Private</span>{% endif %}</p>
+            {% if not e.is_public %}<span class="badge ml-1 bg-surface-2 text-faint" title="Visitors don't see this">Private</span>{% endif %}</p>
           <h3 class="mt-1 font-medium">{{ e.title }}</h3>
           {% if e.notes %}<p class="mt-1 text-sm whitespace-pre-line text-muted">{{ e.notes }}</p>{% endif %}
         </div>
         <div class="flex gap-2">
           <a href="{% url 'weather:station-charts' station.slug %}?start={{ e.occurred_at|date:'Y-m-d' }}&end={{ e.occurred_at|date:'Y-m-d' }}" class="btn btn-ghost btn-sm">Chart</a>
-          <a href="{% url 'weather:station-log' station.slug %}?edit={{ e.pk }}#log-form-title" class="btn btn-secondary btn-sm">Edit</a>
+          {% if can_manage %}<a href="{% url 'weather:station-log' station.slug %}?edit={{ e.pk }}#log-form-title" class="btn btn-secondary btn-sm">Edit</a>
           <form method="post" action="{% url 'weather:station-log-delete' station.slug e.pk %}" onsubmit="return confirm('Delete this log entry?')">
             {% csrf_token %}<button class="btn btn-ghost btn-sm">Delete</button>
-          </form>
+          </form>{% endif %}
         </div>
       </div>
     </article>

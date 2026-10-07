@@ -1,0 +1,102 @@
+{% extends "weather/base_generic.html" %}
+{% block title %}{{ station.name }} people · WS4Free{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-4xl">
+  {% include "weather/partials/station_header.html" %}
+
+  <section class="card mt-6 p-6">
+    <h2 class="text-base font-semibold">Who can do what</h2>
+    <dl class="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+      <div><dt class="font-medium">Viewer</dt><dd class="mt-0.5 text-muted">Sees the station even while it's private, with its indoor readings, private sensors and private log entries.</dd></div>
+      <div><dt class="font-medium">Advanced viewer</dt><dd class="mt-0.5 text-muted">Also sees batteries, neighbours and every Manage tab, read-only, without the secret upload paths.</dd></div>
+      <div><dt class="font-medium">Manager</dt><dd class="mt-0.5 text-muted">Also changes settings, data quality, calibration, the log, neighbours and uploads.</dd></div>
+      <div><dt class="font-medium">Owner</dt><dd class="mt-0.5 text-muted">Also decides who has access, whether the station is public, and who owns it. Site administrators can do everything.</dd></div>
+    </dl>
+  </section>
+
+  <section class="card relative mt-6 overflow-x-auto" aria-labelledby="people-label">
+    <div class="px-6 pt-6">
+      <h2 id="people-label" class="text-base font-semibold">People with access</h2>
+    </div>
+    <table class="mt-3 w-full text-sm">
+      <thead class="text-xs text-muted">
+        <tr class="border-y border-line">
+          <th scope="col" class="px-6 py-3 text-left font-medium">User</th>
+          <th scope="col" class="px-6 py-3 text-left font-medium">Role</th>
+          <th scope="col" class="px-6 py-3 text-left font-medium">Added</th>
+          <th scope="col" class="px-6 py-3"><span class="sr-only">Remove</span></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-line">
+        <tr>
+          <td class="px-6 py-3">{{ station.owner.get_username }}{% if station.owner.get_full_name %} <span class="text-muted">· {{ station.owner.get_full_name }}</span>{% endif %}{% if is_owner %} <span class="text-faint">(you)</span>{% endif %}</td>
+          <td class="px-6 py-3 font-medium">Owner</td>
+          <td class="px-6 py-3 text-muted">—</td>
+          <td class="px-6 py-3"></td>
+        </tr>
+        {% for g in grants %}
+        <tr>
+          <td class="px-6 py-3">{{ g.user.get_username }}{% if g.user.get_full_name %} <span class="text-muted">· {{ g.user.get_full_name }}</span>{% endif %}{% if not g.user.is_active %} <span class="badge ml-1 bg-surface-2 text-faint">Deactivated</span>{% endif %}</td>
+          <td class="px-6 py-3">
+            <form method="post" class="m-0" x-data @change="$el.submit()">{% csrf_token %}
+              <input type="hidden" name="action" value="role"><input type="hidden" name="pk" value="{{ g.pk }}">
+              <label class="sr-only" for="role-{{ g.pk }}">Role for {{ g.user.get_username }}</label>
+              <select name="role" id="role-{{ g.pk }}" class="w-auto py-1">
+                {% for value, label in roles %}<option value="{{ value }}" {% if g.role == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+              </select>
+              <noscript><button type="submit" class="btn btn-secondary btn-sm">Change</button></noscript>
+            </form>
+          </td>
+          <td class="px-6 py-3 whitespace-nowrap text-muted">{{ g.added_at|date:"M j, Y" }}{% if g.added_by %} · {{ g.added_by.get_username }}{% endif %}</td>
+          <td class="px-6 py-3 text-right">
+            <form method="post" class="m-0">{% csrf_token %}
+              <input type="hidden" name="action" value="remove"><input type="hidden" name="pk" value="{{ g.pk }}">
+              <button type="submit" class="btn btn-ghost btn-sm text-bad">Remove</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if not grants %}<p class="px-6 pt-3 text-sm text-muted">No one else yet.</p>{% endif %}
+    <form method="post" class="flex flex-wrap items-end gap-3 p-6">{% csrf_token %}
+      <input type="hidden" name="action" value="add">
+      <div class="field m-0 min-w-48 flex-1">
+        <label for="add-username">Add someone by username</label>
+        <input type="text" name="username" id="add-username" required autocomplete="off" spellcheck="false" autocapitalize="none">
+      </div>
+      <div class="field m-0">
+        <label for="add-role">As</label>
+        <select name="role" id="add-role">{% for value, label in roles %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select>
+      </div>
+      <button type="submit" class="btn btn-primary">Add</button>
+    </form>
+    <p class="-mt-3 px-6 pb-6 text-xs text-faint">They need an account here first{% if user.is_staff %}: add one on the <a href="{% url 'accounts:users' %}">Users</a> page{% else %}; a site administrator adds people{% endif %}.</p>
+  </section>
+
+  <section class="card mt-6 p-6" aria-labelledby="transfer-label">
+    <h2 id="transfer-label" class="text-base font-semibold">Transfer ownership</h2>
+    <p class="mt-1 max-w-prose text-sm text-muted">Hand {{ station.name }} to someone else. They become its owner; the change is noted in the station log.</p>
+    <form method="post" class="mt-4 space-y-4" x-data="{ keep: true }"
+          @submit="if (!confirm(keep ? 'Transfer {{ station.name|escapejs }}? You\'ll stay on as a manager.' : 'Transfer {{ station.name|escapejs }}? {% if is_owner %}You\'ll lose access to it{% else %}Its owner loses access{% endif %} unless it\'s public.')) $event.preventDefault()">{% csrf_token %}
+      <input type="hidden" name="action" value="transfer">
+      <div class="field m-0 max-w-sm">
+        <label for="transfer-user">New owner</label>
+        {% if candidates is not None %}
+        <select name="username" id="transfer-user" required>
+          <option value="">Choose…</option>
+          {% for u in candidates %}<option value="{{ u.get_username }}">{{ u.get_username }}{% if u.get_full_name %} · {{ u.get_full_name }}{% endif %}</option>{% endfor %}
+        </select>
+        {% else %}
+        <input type="text" name="username" id="transfer-user" required autocomplete="off" spellcheck="false" autocapitalize="none" placeholder="Their username">
+        {% endif %}
+      </div>
+      <div class="flex items-start gap-3">
+        <input type="checkbox" name="keep_previous" value="1" id="keep-previous" class="mt-0.5" x-model="keep" checked>
+        <label for="keep-previous" class="m-0">Keep {% if is_owner %}me{% else %}{{ station.owner.get_username }}{% endif %} on as a manager</label>
+      </div>
+      <button type="submit" class="btn btn-secondary">Transfer</button>
+    </form>
+  </section>
+</div>
+{% endblock %}

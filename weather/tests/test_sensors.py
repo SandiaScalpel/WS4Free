@@ -406,11 +406,13 @@ class LowBatteryPeriodTests(TestCase):
                          ['Outdoor sensor'])
         start = dt.datetime(2025, 7, 1, 9, tzinfo=tz)
         self.assertEqual(charts.history(station, start, start + dt.timedelta(hours=3), IMPERIAL)['battery'], [])   # visitors
-        raw = charts.history(station, start, start + dt.timedelta(hours=3), IMPERIAL, include_private=True)
+        viewer = charts.history(station, start, start + dt.timedelta(hours=3), IMPERIAL, include_private=True)
+        self.assertEqual(viewer['battery'], [])                       # viewers see private sensors, not batteries
+        raw = charts.history(station, start, start + dt.timedelta(hours=3), IMPERIAL, include_private=True, batteries=True)
         ms = lambda h, m: int(dt.datetime(2025, 7, 1, h, m, tzinfo=tz).timestamp() * 1000)   # noqa: E731
         self.assertEqual(raw['battery'], [{'start': ms(10, 5), 'end': ms(10, 15), 'names': ['Outdoor sensor'], 'intermittent': False}])
         daily = charts.history(station, start - dt.timedelta(days=200), start + dt.timedelta(days=1), IMPERIAL,
-                               include_private=True)
+                               include_private=True, batteries=True)
         self.assertEqual([b['names'] for b in daily['battery']], [['Outdoor sensor']])
 
 

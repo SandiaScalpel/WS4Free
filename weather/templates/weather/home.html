@@ -10,7 +10,7 @@
   </div>
   <div class="flex flex-wrap gap-2">
     {% if stations|length > 1 %}<a href="{% url 'weather:compare' %}" class="btn btn-secondary">Compare stations</a>{% endif %}
-    {% if is_list and user.is_staff %}<a href="{% url 'weather:station-create' %}" class="btn btn-secondary">Add a station</a>{% endif %}
+    {% if is_list and can_add_station %}<a href="{% url 'weather:station-create' %}" class="btn btn-secondary">Add a station</a>{% endif %}
   </div>
 </div>
 
@@ -32,7 +32,7 @@
       <div><dt class="eyebrow">Wind</dt><dd class="reading mt-1">{{ d.wind_speed_ms|speed:units }}</dd></div>
       <div><dt class="eyebrow">Rain today</dt><dd class="reading mt-1">{{ d.rain_daily_mm|rain:units }}</dd></div>
     </dl>
-    {% if user.is_staff or st.owner_id == user.pk %}
+    {% if st.show_manage %}
     <div class="mt-5 border-t border-line pt-4"><a href="{% url 'weather:station-settings' st.slug %}" class="relative z-10 text-sm font-medium no-underline">Manage station &rarr;</a></div>
     {% endif %}
   </article>
@@ -62,7 +62,7 @@
         <li class="flex gap-3"><span class="grid size-6 shrink-0 place-items-center rounded-full bg-surface-2 text-xs font-bold text-muted">2</span><span><span class="font-medium">Point the console here</span><span class="block text-muted">Custom-server upload in Ambient or Ecowitt format, WeeWX, or the Ambient API.</span></span></li>
         <li class="flex gap-3"><span class="grid size-6 shrink-0 place-items-center rounded-full bg-surface-2 text-xs font-bold text-muted">3</span><span><span class="font-medium">Import your history</span><span class="block text-muted">From ambientweather.net or an existing WeeWX database.</span></span></li>
       </ol>
-      {% if user.is_staff %}<a href="{% url 'weather:station-create' %}" class="btn btn-primary mt-6">Add a station</a>{% endif %}
+      {% if can_add_station %}<a href="{% url 'weather:station-create' %}" class="btn btn-primary mt-6">Add a station</a>{% endif %}
     </div>
 
     {# A preview of the live tiles, greyed out until data arrives. #}

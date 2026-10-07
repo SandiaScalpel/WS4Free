@@ -1,0 +1,9 @@
+{# The "Site administrator" checkbox with its explanation. Needs field. #}
+<div class="mt-4 flex items-start gap-3">
+  <input type="checkbox" name="{{ field.html_name }}" id="{{ field.id_for_label }}" class="mt-0.5" {% if field.value %}checked{% endif %}>
+  <div>
+    <label for="{{ field.id_for_label }}" class="m-0 font-medium">{{ field.label }}</label>
+    <p class="form-help">{{ field.help_text }}</p>
+    {{ field.errors }}
+  </div>
+</div>

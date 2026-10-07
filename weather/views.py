@@ -2,6 +2,7 @@ import datetime as dt
 
 from django.conf import settings
 from django.contrib import messages
+from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.views import redirect_to_login
 from django.db.models import Max, Min, Q
@@ -12,7 +13,7 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
-from . import agro, almanac, charts, dashboard, reports
+from . import access, agro, almanac, charts, dashboard, reports
 from . import forecast as forecasts
 from . import neighbours as neighbour_data
 from . import calibration, quality
@@ -22,28 +23,28 @@ from . import help as help_docs
 from .forms import CalibrationForm, ExclusionForm, StationCreateForm, SiteSettingsForm, StationEventForm, StationSettingsForm
 from .ingest.store import mark_dirty
 from .models import (DailyRollup, DataExclusion, Neighbour, Observation, SensorGateway, SiteSettings, Station,
-                     StationEvent, TempCalibration)
+                     StationAccess, StationEvent, TempCalibration)
+from .access import visible_stations
 from .units import SYSTEMS, UNITS_COOKIE, prefs_for_request
 
 
-def visible_stations(user):
-    """Public stations plus, for a signed-in user, their own (staff see all)."""
-    if user.is_authenticated and user.is_staff:
-        return Station.objects.all()
-    if user.is_authenticated:
-        return Station.objects.filter(Q(is_public=True) | Q(owner=user))
-    return Station.objects.filter(is_public=True)
-
-
 def _owned_station(request, slug):
+    """The station for its Manage pages: reading them needs an advanced viewer or better,
+    any change (every non-GET request) a manager; else 404."""
     station = get_object_or_404(Station, slug=slug)
-    if not (request.user.is_staff or station.owner_id == request.user.pk):
+    allowed = (access.can_see_management if request.method in ('GET', 'HEAD') else access.can_manage)
+    if not allowed(request.user, station):
         raise Http404
     return station
 
 
 def _home_station(request, stations):
-    """The station the site's front page shows, or None for the station list."""
+    """The station the site's front page shows, or None for the station list. A signed-in
+    owner who isn't an administrator gets their own station; everyone else the site's
+    default station."""
+    own = access.own_home_station(request.user)
+    if own is not None and any(s.pk == own.pk for s in stations):
+        return next(s for s in stations if s.pk == own.pk)
     site = SiteSettings.get()
     if site.default_station_id and any(s.pk == site.default_station_id for s in stations):
         return next(s for s in stations if s.pk == site.default_station_id)
@@ -62,32 +63,47 @@ def _render_dashboard(request, station, stations, is_home=False):
     return render(request, 'weather/dashboard.html', context)
 
 
+def _with_manage_flags(user, stations):
+    for s in stations:
+        s.show_manage = access.can_see_management(user, s)
+    return stations
+
+
 def home(request):
-    stations = list(visible_stations(request.user).select_related('latest'))
+    stations = _with_manage_flags(request.user, list(visible_stations(request.user).select_related('latest')))
     station = _home_station(request, stations)
     if station is not None:
         return _render_dashboard(request, station, stations, is_home=True)
-    return render(request, 'weather/home.html', {'stations': stations})
+    return render(request, 'weather/home.html', {'stations': stations,
+                                                 'can_add_station': access.can_add_station(request.user)})
 
 
 def station_list(request):
     """Every station the viewer can see (header 'Stations' link)."""
-    stations = list(visible_stations(request.user).select_related('latest'))
-    return render(request, 'weather/home.html', {'stations': stations, 'is_list': True})
+    stations = _with_manage_flags(request.user, list(visible_stations(request.user).select_related('latest')))
+    return render(request, 'weather/home.html', {'stations': stations, 'is_list': True,
+                                                 'can_add_station': access.can_add_station(request.user)})
 
 
 @login_required
 def station_create(request):
-    """Add a station (site administrators)."""
-    if not request.user.is_staff:
+    """Add a station: administrators, for anyone; users they've allowed, for themselves
+    up to their limit."""
+    allowed, left = access.station_allowance(request.user)
+    if not allowed:
+        if request.user.is_staff or getattr(getattr(request.user, 'profile', None), 'may_add_stations', False):
+            messages.error(request, 'You\'ve added as many stations as you\'re allowed. Ask a site administrator for more.')
+            return redirect('weather:stations')
         raise Http404
-    form = StationCreateForm(request.POST or None, initial={'source': Station.SOURCE_AMBIENT, 'timezone': settings.TIME_ZONE})
+    form = StationCreateForm(request.POST or None, staff=request.user.is_staff,
+                             initial={'source': Station.SOURCE_AMBIENT, 'timezone': settings.TIME_ZONE,
+                                      'owner': request.user.pk})
     if request.method == 'POST' and form.is_valid():
-        station = form.save(request.user)
+        station = form.save((form.cleaned_data.get('owner') if request.user.is_staff else None) or request.user)
         messages.success(request, f'{station.name} added. Now point its console (or WeeWX) at WS4Free.')
         return redirect('weather:station-setup', slug=station.slug)
     return render(request, 'weather/station_create.html', {
-        'form': form, 'timezones': StationSettingsForm.timezone_choices(),
+        'form': form, 'timezones': StationSettingsForm.timezone_choices(), 'stations_left': left,
     })
 
 
@@ -102,7 +118,7 @@ def charts_home(request):
 
 def _viewable_station(request, slug):
     station = get_object_or_404(Station, slug=slug)
-    if station.is_public or (request.user.is_authenticated and (request.user.is_staff or station.owner_id == request.user.pk)):
+    if access.can_view(request.user, station):
         return station
     if not request.user.is_authenticated:
         raise _LoginRequired
@@ -144,7 +160,9 @@ def station_forecast(request, slug):
     return render(request, 'weather/forecast.html', {
         'station': station,
         'other_stations': [s for s in stations if s.pk != station.pk],
-        'can_manage': request.user.is_authenticated and (request.user.is_staff or station.owner_id == request.user.pk),
+        'can_manage': access.can_manage(request.user, station),
+        'can_see_private': access.can_see_private(request.user, station),
+        'can_see_management': access.can_see_management(request.user, station),
         'tab': 'forecast',
         'forecast': days,
     })
@@ -213,18 +231,22 @@ def site_settings(request):
 @login_required
 def station_setup(request, slug):
     station = _owned_station(request, slug)
+    editable = access.can_manage(request.user, station)
     span = Observation.objects.filter(station=station).aggregate(oldest=Min('timestamp'), newest=Max('timestamp'))
     host = request.get_host().split(':')[0]
     return render(request, 'weather/station_setup.html', {
         'station': station,
+        'can_manage': editable,
         'host': host,
-        'ambient_path': f'/ingest/ambient/{station.push_token}/',
-        'ecowitt_path': f'/ingest/ecowitt/{station.push_token}/',
+        # The paths are the station's upload secret: only for those who manage it.
+        'ambient_path': f'/ingest/ambient/{station.push_token}/' if editable else None,
+        'ecowitt_path': f'/ingest/ecowitt/{station.push_token}/' if editable else None,
         'span': span,
         'latest': getattr(station, 'latest', None),
         'captures': station.captures.all()[:15],
         'gateways': [{
-            'g': g, 'ambient_path': f'/ingest/ambient/{g.push_token}/', 'ecowitt_path': f'/ingest/ecowitt/{g.push_token}/',
+            'g': g, 'ambient_path': f'/ingest/ambient/{g.push_token}/' if editable else None,
+            'ecowitt_path': f'/ingest/ecowitt/{g.push_token}/' if editable else None,
             'sensors': [(station.sensors.get(k) or {}).get('name') or sensor_catalog.describe(k).default_label
                         for k in sensor_catalog.sensor_keys(g.latest_extra)],
         } for g in station.gateways.all()],
@@ -267,6 +289,12 @@ def station_settings(request, slug):
     station = _owned_station(request, slug)
     old_timezone, was_public = station.timezone, station.is_public
     form = StationSettingsForm(request.POST or None, instance=station, prefs=prefs_for_request(request))
+    administer = access.can_administer(request.user, station)
+    if not administer:
+        del form.fields['is_public']                 # managers can't make a station public or private
+    if not station.uses_site_services:
+        # The site's Ambient API keys aren't used for stations users add for themselves.
+        del form.fields['mac_address'], form.fields['ambient_api_enabled']
     if request.method == 'POST' and form.is_valid():
         station = form.save()
         if station.timezone != old_timezone:
@@ -279,14 +307,15 @@ def station_settings(request, slug):
         if station.is_public and not was_public:
             messages.success(request, f'{station.name} is now public. Anyone can view its dashboard and charts.')
         elif was_public and not station.is_public:
-            messages.success(request, f'{station.name} is now private. Only you can see it.')
+            messages.success(request, f'{station.name} is now private. Visitors can no longer see it.')
         else:
             messages.success(request, 'Settings saved.')
         return redirect('weather:station-settings', slug=station.slug)
     # On a failed POST the form has already copied the submitted values onto
     # `station`; the header must show what is actually saved.
     return render(request, 'weather/station_settings.html', {
-        'station': Station.objects.get(pk=station.pk), 'form': form, 'tab': 'settings',
+        'station': Station.objects.get(pk=station.pk), 'form': form, 'tab': 'settings', 'can_administer': administer,
+        'can_manage': access.can_manage(request.user, station),
         'timezones': StationSettingsForm.timezone_choices(),
     })
 
@@ -354,7 +383,9 @@ def station_charts(request, slug):
         'station': station,
         'other_stations': [s for s in stations if s.pk != station.pk],
         'years': charts.years_available(station),
-        'can_manage': request.user.is_authenticated and (request.user.is_staff or station.owner_id == request.user.pk),
+        'can_manage': access.can_manage(request.user, station),
+        'can_see_private': access.can_see_private(request.user, station),
+        'can_see_management': access.can_see_management(request.user, station),
         'tab': 'charts',
     })
 
@@ -367,17 +398,18 @@ def station_chart_data(request, slug):
     prefs = prefs_for_request(request)
     kind = request.GET.get('kind', 'history')
     meta = {'units': prefs.as_json(), 'tz': station.timezone}
-    owner = request.user.is_authenticated and (request.user.is_staff or station.owner_id == request.user.pk)
+    private = access.can_see_private(request.user, station)
     if kind == 'history':
         start, end = _parse_range(request, station)
         if request.GET.get('format') == 'csv':
-            response = HttpResponse(charts.history_csv(station, start, end, prefs, include_private=owner),
+            response = HttpResponse(charts.history_csv(station, start, end, prefs, include_private=private),
                                     content_type='text/csv; charset=utf-8')
             name = f"{station.slug}-{start.astimezone(station.tzinfo):%Y%m%d}-{end.astimezone(station.tzinfo):%Y%m%d}.csv"
             response['Content-Disposition'] = f'attachment; filename="{name}"'
             return response
-        data = charts.history(station, start, end, prefs, include_private=owner)
-        data['events'] = charts.events(station, start, end, include_private=owner)
+        data = charts.history(station, start, end, prefs, include_private=private,
+                              batteries=access.can_see_management(request.user, station))
+        data['events'] = charts.events(station, start, end, include_private=private)
     elif kind == 'rose':
         start, end = _parse_range(request, station)
         data = charts.wind_rose(station, start, end, prefs)
@@ -424,14 +456,15 @@ def station_almanac(request, slug):
         'calibration_notes': calibration.overlapping(station, ALL_TIME_START, calibration.FAR_FUTURE),
         'station': station,
         'other_stations': [s for s in stations if s.pk != station.pk],
-        'can_manage': request.user.is_authenticated and (request.user.is_staff or station.owner_id == request.user.pk),
+        'can_manage': access.can_manage(request.user, station),
+        'can_see_private': access.can_see_private(request.user, station),
+        'can_see_management': access.can_see_management(request.user, station),
         'tab': 'almanac',
         'picked': picked,
         'is_today': picked.month == today.month and picked.day == today.day,
         'day': almanac.on_this_day(station, picked.month, picked.day),
         'records': almanac.records(station, record_year),
-        'sensor_records': almanac.sensor_records(station, record_year, include_private=request.user.is_authenticated and (
-            request.user.is_staff or station.owner_id == request.user.pk)),
+        'sensor_records': almanac.sensor_records(station, record_year, include_private=access.can_see_private(request.user, station)),
         'record_scope': record_year or 'all',
         'years': years,
         'seasons': list(reversed(seasons)),
@@ -492,6 +525,7 @@ def station_quality(request, slug):
     calibrations = list(station.calibrations.select_related('created_by'))
     return render(request, 'weather/station_quality.html', {
         'station': station, 'form': form, 'cal_form': cal_form, 'tab': 'quality', 'exclusions': exclusions,
+        'can_manage': access.can_manage(request.user, station),
         'calibrations': calibrations,
         'busy': any(e.status in ('pending', 'removing') for e in exclusions)
                 or any(c.status in ('fitting', 'pending', 'removing') for c in calibrations),
@@ -578,8 +612,8 @@ def station_reports(request, slug):
     preset, start, end = _report_range(request, station)
     group = request.GET.get('group', 'auto')
     columns = request.GET.getlist('col') or reports.DEFAULT_COLUMNS
-    owner = request.user.is_authenticated and (request.user.is_staff or station.owner_id == request.user.pk)
-    report = reports.build(station, start, end, prefs, group, columns, include_private=owner)
+    private = access.can_see_private(request.user, station)
+    report = reports.build(station, start, end, prefs, group, columns, include_private=private)
     if request.GET.get('format') == 'csv':
         response = HttpResponse(reports.to_csv(report), content_type='text/csv; charset=utf-8')
         response['Content-Disposition'] = (f'attachment; filename="{station.slug}-{report.group}-report-'
@@ -593,14 +627,16 @@ def station_reports(request, slug):
         'calibration_notes': calibration.overlapping(station, ALL_TIME_START, calibration.FAR_FUTURE),
         'station': station,
         'other_stations': [s for s in stations if s.pk != station.pk],
-        'can_manage': request.user.is_authenticated and (request.user.is_staff or station.owner_id == request.user.pk),
+        'can_manage': access.can_manage(request.user, station),
+        'can_see_private': access.can_see_private(request.user, station),
+        'can_see_management': access.can_see_management(request.user, station),
         'tab': 'reports',
         'report': report,
         'rows': list(zip(report.rows, cells)),
         'summary': [(v, reports.digits_for(c, prefs)) for v, c in zip(report.summary, report.columns)],
         'headers': [(c, reports.unit_for(c, prefs)) for c in report.columns],
         'all_columns': reports.COLUMNS,
-        'sensor_columns': reports.sensor_columns(station, include_private=owner),
+        'sensor_columns': reports.sensor_columns(station, include_private=private),
         'selected': set(columns),
         'presets': REPORT_PRESETS,
         'preset': preset,
@@ -673,7 +709,9 @@ def station_growing(request, slug):
         'calibration_notes': calibration.overlapping(station, ALL_TIME_START, calibration.FAR_FUTURE),
         'station': station, 'tab': 'growing',
         'other_stations': [s for s in stations if s.pk != station.pk],
-        'can_manage': request.user.is_authenticated and (request.user.is_staff or station.owner_id == request.user.pk),
+        'can_manage': access.can_manage(request.user, station),
+        'can_see_private': access.can_see_private(request.user, station),
+        'can_see_management': access.can_see_management(request.user, station),
         'presets': agro.GDD_PRESETS, 'preset': preset,
         'season_label': f"{dt.date(2001, *preset.start):%b} {preset.start[1]} – {dt.date(2001, *preset.end):%b} {preset.end[1]}",
         'gdd_total': None if current is None else current['total'] * deg,
@@ -779,6 +817,7 @@ def station_log(request, slug, pk=None):
         form.initial.setdefault('date', timezone.now().astimezone(station.tzinfo).date())
     return render(request, 'weather/station_log.html', {
         'station': station, 'tab': 'log', 'form': form, 'editing': instance,
+        'can_manage': access.can_manage(request.user, station),
         'events': station.events.all(),
     })
 
@@ -799,6 +838,8 @@ def station_neighbours(request, slug):
     """Owner's list of neighbouring Weather Underground stations, and how this
     station's temperature and humidity compare with theirs."""
     station = _owned_station(request, slug)
+    if not station.uses_site_services:
+        raise Http404                    # uses the site's Weather Underground key
     if request.method == 'POST':
         try:
             added = neighbour_data.add(station, request.POST.get('wu_id', ''))
@@ -832,7 +873,7 @@ def station_neighbours(request, slug):
         live['temp_diff'] = _diff(ours_now.get('temp_c'), live['temp_c'])
         live['humidity_diff'] = _diff(ours_now.get('humidity'), live['humidity'])
     return render(request, 'weather/station_neighbours.html', {
-        'station': station, 'tab': 'neighbours',
+        'station': station, 'tab': 'neighbours', 'can_manage': access.can_manage(request.user, station),
         'key_set': bool(settings.WU_API_KEY),
         'poll_minutes': settings.WU_POLL_MINUTES,
         'neighbours': rows,
@@ -868,6 +909,8 @@ def _round(value, digits=1):
 @require_POST
 def station_neighbour_include(request, slug, pk):
     station = _owned_station(request, slug)
+    if not station.uses_site_services:
+        raise Http404                    # uses the site's Weather Underground key
     neighbour = get_object_or_404(Neighbour, pk=pk, station=station)
     neighbour.include = not neighbour.include
     neighbour.save(update_fields=['include'])
@@ -879,7 +922,76 @@ def station_neighbour_include(request, slug, pk):
 @require_POST
 def station_neighbour_delete(request, slug, pk):
     station = _owned_station(request, slug)
+    if not station.uses_site_services:
+        raise Http404                    # uses the site's Weather Underground key
     neighbour = get_object_or_404(Neighbour, pk=pk, station=station)
     neighbour.delete()
     messages.success(request, f'{neighbour.wu_id} removed, with its readings.')
     return redirect('weather:station-neighbours', slug=station.slug)
+
+
+# ── People: who else has access, and ownership ────────────────────────────────
+
+def _active_user(username):
+    return get_user_model().objects.filter(username__iexact=(username or '').strip(), is_active=True).first()
+
+
+@login_required
+def station_people(request, slug):
+    """The owner (and staff) share the station with other users as viewers or managers,
+    and can hand it to someone else."""
+    station = get_object_or_404(Station.objects.select_related('owner'), slug=slug)
+    if not access.can_administer(request.user, station):
+        raise Http404
+    people_url = reverse('weather:station-people', args=[station.slug])
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        role = request.POST.get('role')
+        if action == 'add':
+            other = _active_user(request.POST.get('username'))
+            if other is None:
+                messages.error(request, 'No one with that username can sign in here. Check the spelling, or ask an '
+                                        'administrator to add them.')
+            elif other.pk == station.owner_id:
+                messages.error(request, f'{other.get_username()} owns this station.')
+            elif other.is_staff:
+                messages.error(request, f'{other.get_username()} is a site administrator and already has full access.')
+            elif role not in dict(StationAccess.ROLE_CHOICES):
+                messages.error(request, 'Choose viewer or manager.')
+            else:
+                _, created = StationAccess.objects.update_or_create(station=station, user=other,
+                                                                    defaults={'role': role, 'added_by': request.user})
+                label = dict(StationAccess.ROLE_CHOICES)[role].lower()
+                messages.success(request, f'{other.get_username()} {"added as a" if created else "is now a"} {label}.')
+        elif action in ('role', 'remove'):
+            grant = get_object_or_404(StationAccess, pk=request.POST.get('pk'), station=station)
+            if action == 'remove':
+                grant.delete()
+                messages.success(request, f'{grant.user.get_username()} no longer has access.')
+            elif role in dict(StationAccess.ROLE_CHOICES):
+                grant.role = role
+                grant.save(update_fields=['role'])
+                messages.success(request, f'{grant.user.get_username()} is now a {grant.get_role_display().lower()}.')
+        elif action == 'transfer':
+            other = _active_user(request.POST.get('username'))
+            keep = request.POST.get('keep_previous') == '1'
+            if other is None:
+                messages.error(request, 'No one with that username can sign in here.')
+            elif other.pk == station.owner_id:
+                messages.info(request, f'{other.get_username()} already owns this station.')
+            else:
+                access.transfer(station, other, by=request.user, keep_previous=keep)
+                messages.success(request, f'{other.get_username()} now owns {station.name}.')
+                if not access.can_view(request.user, station):
+                    return redirect('weather:home')
+                if not access.can_administer(request.user, station):
+                    return redirect('weather:station-settings', slug=station.slug)
+        return redirect(people_url)
+    return render(request, 'weather/station_people.html', {
+        'station': station, 'tab': 'people',
+        'grants': station.access.select_related('user', 'added_by'),
+        'roles': StationAccess.ROLE_CHOICES,
+        'is_owner': station.owner_id == request.user.pk,
+        'candidates': (get_user_model().objects.filter(is_active=True).exclude(pk=station.owner_id).order_by('username')
+                       if request.user.is_staff else None),
+    })

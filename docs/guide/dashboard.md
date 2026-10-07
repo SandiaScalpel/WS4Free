@@ -28,7 +28,8 @@ show that last reading, slightly dimmed.
 - **Pressure**: relative (sea-level) pressure, as the console reports it, and its trend over the last three hours
   (steady, rising, falling, or fast).
 - **Sun**: UV index with its WHO category, solar radiation, and today's peak UV.
-- **Indoors** (owner only): the console's indoor temperature and humidity.
+- **Indoors** (the owner and the people they share the station with): the
+  console's indoor temperature and humidity.
 - **Forecast**: the next days from [Open-Meteo](https://open-meteo.com/): an
   icon for the expected weather, the high and low, and the chance of rain, plus
   the expected amount when there's more than a trace. As many days are shown

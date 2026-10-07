@@ -77,8 +77,10 @@
         <div x-show="open" x-cloak @click.outside="open = false" x-transition.origin.top.right
              class="card absolute right-0 mt-2 w-56 p-1.5" role="menu">
           <a href="{% url 'accounts:settings' %}" class="nav-link block" role="menuitem">Settings &amp; security</a>
+          {% if can_add_own_station %}<a href="{% url 'weather:station-create' %}" class="nav-link block" role="menuitem">Add a station</a>{% endif %}
           {% if user.is_staff %}<a href="{% url 'weather:site-settings' %}" class="nav-link block" role="menuitem">Site settings</a>
           <a href="{% url 'weather:stations' %}" class="nav-link block" role="menuitem">Manage stations</a>
+          <a href="{% url 'accounts:users' %}" class="nav-link block" role="menuitem">Users</a>
           <a href="{% url 'admin:index' %}" class="nav-link block" role="menuitem">Admin</a>{% endif %}
           <div class="my-1 border-t border-line"></div>
           <form method="post" action="{% url 'logout' %}">{% csrf_token %}

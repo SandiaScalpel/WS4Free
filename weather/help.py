@@ -30,6 +30,7 @@ PAGES = [
     ('data-quality', 'Data quality and calibration'),
     ('neighbours', 'Neighbouring stations'),
     ('settings', 'Settings and sharing'),
+    ('users', 'Users and access'),
     ('how-it-works', 'How the numbers work'),
     ('changelog', 'What’s new'),
 ]
@@ -39,7 +40,7 @@ TITLES = dict(PAGES)
 TAB_PAGES = {
     'overview': 'dashboard', 'forecast': 'dashboard', 'charts': 'charts', 'almanac': 'almanac', 'growing': 'growing',
     'reports': 'reports', 'settings': 'settings', 'console': 'connecting', 'quality': 'data-quality', 'log': 'settings',
-    'neighbours': 'neighbours',
+    'neighbours': 'neighbours', 'people': 'users',
 }
 
 

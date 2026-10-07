@@ -16,11 +16,13 @@ WS4Free receives readings in up to three ways:
 A station has to exist in WS4Free before it can receive readings.
 
 - **In the app:** a site administrator opens **Manage stations** in their user
-  menu and chooses **Add a station** (or **Add a station** on an empty site). Give it a name, choose where its readings
+  menu and chooses **Add a station** (or **Add a station** on an empty site).
+  Users an administrator has allowed to add their own stations find **Add a
+  station** in their own user menu (see [Users and access](users.md)). Give it a name, choose where its readings
   come from (an Ambient Weather console, an Ecowitt or Fine Offset console,
   WeeWX, or other Wunderground-style uploads), and set the time zone, latitude
   and longitude. Only Ambient stations need a MAC address, and only to use the
-  Ambient Weather API.
+  Ambient Weather API (for administrators' stations; it uses the site's keys).
 - **Ambient Weather accounts:** the administrator can instead run
   `import_ambient_stations`, which adds every device on your ambientweather.net
   account with its name, location and time zone (see the README).

@@ -133,7 +133,7 @@ class GatewayIngestTests(TestCase):
         self.client.force_login(self.station.owner)
         with mock.patch('weather.dashboard.timezone.now', return_value=PUSH_NOW):
             html = self.client.get(reverse('weather:station-live', args=[self.station.slug])).content.decode()
-        self.assertIn('text-good" title="Only you see this. Below 1.2 V the battery needs replacing">Battery 1.50 V</p>', html)
+        self.assertIn('text-good" title="Visitors and viewers don\'t see this. Below 1.2 V the battery needs replacing">Battery 1.50 V</p>', html)
 
     def test_unknown_token_is_still_404(self):
         self.assertEqual(self.client.post('/ingest/ecowitt/nope/', GATEWAY_BODY,

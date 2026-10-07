@@ -4,16 +4,18 @@
 <div class="mx-auto max-w-2xl">
   <a href="{% url 'weather:stations' %}" class="text-sm no-underline">&larr; Stations</a>
   <h1 class="mt-2 text-2xl font-bold">Add a station</h1>
-  <p class="mt-1 text-sm text-muted">After saving, the station's setup page shows how to send it readings. Ambient Weather
-    stations on your ambientweather.net account can also be added in one go with <code>import_ambient_stations</code>.</p>
+  <p class="mt-1 text-sm text-muted">After saving, the station's setup page shows how to send it readings.{% if user.is_staff %} Ambient Weather
+    stations on your ambientweather.net account can also be added in one go with <code>import_ambient_stations</code>.{% else %}
+    It will be yours: you manage it and decide who else sees it.{% if stations_left is not None %} You can add {{ stations_left }} more station{{ stations_left|pluralize }}.{% endif %}{% endif %}</p>
 
   <form method="post" class="card mt-6 space-y-4 p-6" novalidate x-data="{ source: '{{ form.source.value|default:'ambient' }}' }">
     {% csrf_token %}
     {% if form.errors %}<div class="alert alert-error" role="alert">Nothing was saved. Please fix the highlighted fields below.</div>{% endif %}
     {% include "weather/partials/field.html" with field=form.name %}
     {% include "weather/partials/field.html" with field=form.place %}
+    {% if form.owner %}{% include "weather/partials/field.html" with field=form.owner %}{% endif %}
     <div @change="source = $event.target.value">{% include "weather/partials/field.html" with field=form.source %}</div>
-    <div x-show="source === 'ambient'">{% include "weather/partials/field.html" with field=form.mac_address %}</div>
+    {% if form.mac_address %}<div x-show="source === 'ambient'">{% include "weather/partials/field.html" with field=form.mac_address %}</div>{% endif %}
     {% include "weather/partials/field.html" with field=form.timezone %}
     <datalist id="tz-list">{% for tz in timezones %}<option value="{{ tz }}">{% endfor %}</datalist>
     <div class="grid gap-4 sm:grid-cols-2 [&_.field+.field]:mt-0">

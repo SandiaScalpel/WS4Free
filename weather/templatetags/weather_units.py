@@ -194,6 +194,14 @@ def noon_offset(coef):
     return coef.get('night', 0) + coef.get('day', 0) + coef.get('solar', 0) * 0.9
 
 
+@register.simple_tag(takes_context=True)
+def can_administer(context, station):
+    """Whether the signed-in user may share the station and transfer it (weather.access)."""
+    from .. import access
+    request = context.get('request')
+    return request is not None and access.can_administer(request.user, station)
+
+
 @register.simple_tag
 def help_url(tab):
     """Guide page that explains a station tab (weather.help.TAB_PAGES)."""

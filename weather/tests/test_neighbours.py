@@ -16,6 +16,12 @@ from weather.models import LatestReading, Neighbour, NeighbourReading, Observati
 
 from .helpers import make_station
 
+
+def _admin():
+    """Neighbours use the site's Weather Underground key: administrators' stations only."""
+    from django.contrib.auth import get_user_model
+    return get_user_model().objects.get_or_create(username='admin', defaults={'is_staff': True})[0]
+
 UTC = dt.UTC
 NOW = dt.datetime(2026, 7, 1, 18, 2, tzinfo=UTC)          # noon in Denver
 KEY = 'secret-wu-key'
@@ -41,7 +47,8 @@ def session(*responses):
 @override_settings(WU_API_KEY=KEY, WU_API_URL='https://wu.test/current', WU_POLL_MINUTES=10)
 class ClientTests(TestCase):
     def setUp(self):
-        self.station = make_station(latitude=Decimal('35.1'), longitude=Decimal('-106.6'), elevation_m=1500.0)
+        self.station = make_station(latitude=Decimal('35.1'), longitude=Decimal('-106.6'), elevation_m=1500.0,
+                                    owner=_admin())
 
     def test_normalise_id(self):
         self.assertEqual(neighbours.normalise_id(' knmalbuq123 '), 'KNMALBUQ123')
@@ -117,7 +124,7 @@ class ClientTests(TestCase):
 
 class ComparisonTests(TestCase):
     def setUp(self):
-        self.station = make_station(latitude=Decimal('35.1'), longitude=Decimal('-106.6'))
+        self.station = make_station(latitude=Decimal('35.1'), longitude=Decimal('-106.6'), owner=_admin())
         self.ns = [Neighbour.objects.create(station=self.station, wu_id=f'KNM{i}') for i in range(5)]
 
     def reading(self, n, when, temp, humidity=30.0, qc=1):
@@ -184,7 +191,7 @@ class ComparisonTests(TestCase):
 class PageTests(TestCase):
     def setUp(self):
         User = get_user_model()
-        self.owner = User.objects.create_user('owner', password='x' * 16)
+        self.owner = User.objects.create_user('owner', password='x' * 16, is_staff=True)   # site's WU key
         self.other = User.objects.create_user('other', password='x' * 16)
         for user in (self.owner, self.other):         # a second factor, so no 2FA reminder page
             TOTPDevice.objects.create(user=user, name='phone', confirmed=True)

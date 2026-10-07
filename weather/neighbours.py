@@ -143,7 +143,9 @@ def due(now=None):
     """Neighbours whose next poll is due (a little early is fine: the job runs every 5 minutes)."""
     now = now or timezone.now()
     cutoff = now - dt.timedelta(minutes=settings.WU_POLL_MINUTES) + dt.timedelta(seconds=30)
-    return list(Neighbour.objects.filter(Q(last_attempt_at__isnull=True) | Q(last_attempt_at__lte=cutoff))
+    # Only administrators' stations use the site's key (Station.uses_site_services).
+    return list(Neighbour.objects.filter(Q(last_attempt_at__isnull=True) | Q(last_attempt_at__lte=cutoff),
+                                         station__owner__is_staff=True, station__owner__is_active=True)
                 .order_by('last_attempt_at', 'pk'))
 
 
@@ -179,7 +181,8 @@ def poll(now=None, session=None, sleep=time.sleep):
 
 def calls_per_day(count=None):
     """How many WU requests a day the neighbours on this site use."""
-    count = Neighbour.objects.count() if count is None else count
+    count = (Neighbour.objects.filter(station__owner__is_staff=True, station__owner__is_active=True).count()
+             if count is None else count)
     return math.ceil(count * 24 * 60 / max(settings.WU_POLL_MINUTES, 1))
 
 

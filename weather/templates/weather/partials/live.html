@@ -33,7 +33,7 @@
           <span class="text-faint" title="Wind chill: at 50 °F or colder with wind of 3 mph or more">(wind chill)</span>{% elif feels_kind == 'heat_index' %}
           <span class="text-faint" title="Heat index: at 80 °F or warmer, from temperature and humidity">(heat index)</span>{% endif %}{% if calibrated %}
           <span class="badge ml-1 bg-warn/15 text-warn" title="Corrected for a sensor that reads wrong; an estimate, not a direct measurement">Corrected</span>{% endif %}</p>
-        {% if neighbours %}<p class="mt-1 text-sm text-muted"><a href="{% url 'weather:station-neighbours' station.slug %}" class="text-muted no-underline hover:text-ink" title="Only you see this. Average of your neighbouring stations' latest readings, highest and lowest left out">Neighbours</a>
+        {% if neighbours %}<p class="mt-1 text-sm text-muted"><a href="{% url 'weather:station-neighbours' station.slug %}" class="text-muted no-underline hover:text-ink" title="Visitors and viewers don't see this. Average of your neighbouring stations' latest readings, highest and lowest left out">Neighbours</a>
           <span class="font-medium text-ink">{{ neighbours.temp_c|temp:units }}</span>{% if neighbours.temp_c_diff is not None %} <span class="text-faint">(you {{ neighbours.temp_c_diff|temp_delta:units }})</span>{% endif %}</p>{% endif %}
       </div>
       <dl class="grid grid-cols-2 gap-x-6 gap-y-4 text-sm sm:justify-self-end">
@@ -153,7 +153,7 @@
   <section class="card p-6" aria-labelledby="indoor-label">
     <div class="flex items-start justify-between gap-3">
       <h2 id="indoor-label" class="text-sm font-medium text-muted">Indoors</h2>
-      <span class="badge bg-surface-2 text-muted" title="Only you can see this">Private</span>
+      <span class="badge bg-surface-2 text-muted" title="Visitors don't see this">Private</span>
     </div>
     <dl class="mt-1 grid grid-cols-2 gap-3">
       <div><dt class="sr-only">Indoor temperature</dt><dd class="text-4xl font-semibold tracking-tight">{{ now.temp_in_c|temp:units }}</dd></div>
@@ -200,12 +200,12 @@
   <ul class="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
     {% for group in sensor_groups %}{% for item in group.items %}
     <li class="relative min-w-0 rounded-lg bg-surface-2 px-4 py-3">
-      {% if item.private and can_manage %}<span class="badge absolute top-2.5 right-3 bg-surface text-faint" title="Only you can see this">Private</span>{% endif %}
-      <p class="truncate text-xs text-faint {% if item.private and can_manage %}pr-16{% endif %}">{{ group.label }}</p>
+      {% if item.private and can_see_private %}<span class="badge absolute top-2.5 right-3 bg-surface text-faint" title="Visitors don't see this">Private</span>{% endif %}
+      <p class="truncate text-xs text-faint {% if item.private and can_see_private %}pr-16{% endif %}">{{ group.label }}</p>
       <p class="truncate text-sm text-muted">{{ item.name }}</p>
       <p class="mt-0.5 text-xl font-semibold tracking-tight sm:text-2xl {% if item.tone == 'bad' %}text-bad{% endif %}">{{ item.value }}</p>
       {% if item.detail %}<p class="mt-0.5 text-xs {% if item.tone == 'good' %}text-good{% elif item.tone == 'warn' %}text-warn{% elif item.tone == 'warm' %}text-warm{% elif item.tone == 'bad' %}text-bad{% else %}text-faint{% endif %}">{{ item.detail }}</p>{% endif %}
-      {% if item.battery %}<p class="mt-0.5 text-xs {% if item.battery.low %}text-bad{% else %}text-good{% endif %}" title="Only you see this. Below 1.2 V the battery needs replacing">Battery {{ item.battery.volts|floatformat:2 }} V{% if item.battery.low %} · replace{% endif %}</p>{% endif %}
+      {% if item.battery %}<p class="mt-0.5 text-xs {% if item.battery.low %}text-bad{% else %}text-good{% endif %}" title="Visitors and viewers don't see this. Below 1.2 V the battery needs replacing">Battery {{ item.battery.volts|floatformat:2 }} V{% if item.battery.low %} · replace{% endif %}</p>{% endif %}
     </li>
     {% endfor %}{% endfor %}
   </ul>
