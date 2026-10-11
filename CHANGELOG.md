@@ -7,7 +7,7 @@ each release for anything you need to do beyond the usual steps in the README.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 1.6.0 — 2026-10-11
 
 ### Added
 
@@ -37,6 +37,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
   recalculate relative humidity for the corrected temperature. Readings
   already corrected are converted when you upgrade (migration 0021); removing a
   calibration still restores every original value.
+
+### Upgrading
+
+- Run `python manage.py migrate` (Docker does this for you).
 
 ## 1.5.0 — 2026-10-07
 
