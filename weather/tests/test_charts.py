@@ -64,6 +64,34 @@ class HistoryTests(TestCase):
         self.assertEqual(s['temp'], [None, 12.0])
         self.assertEqual(s['rain'], [5.0, None])
 
+    def test_daily_solar_is_energy_and_needs_a_well_covered_day(self):
+        # 250 W/m² mean over a 24 h day = 6 kWh/m²; over the 25 h DST-end day = 6.25; a half-covered day is unknown.
+        for day, cov in ((dt.date(2026, 3, 1), 1.0), (dt.date(2026, 11, 1), 0.95), (dt.date(2026, 3, 3), 0.5)):
+            DailyRollup.objects.create(station=self.station, date=day, solar_avg_wm2=250.0, solar_max_wm2=900.0, coverage=cov)
+        start, _ = charts.local_range(self.station, dt.date(2026, 1, 1), dt.date(2026, 1, 1))
+        _, end = charts.local_range(self.station, dt.date(2026, 12, 1), dt.date(2026, 12, 1))
+        h = charts.history(self.station, start, end, METRIC, fill=False)
+        self.assertEqual([v for v in h['series']['solar'] if v is not None], [6.0, 6.25])
+        self.assertEqual(h['series']['solar'][1], None)   # 2026-03-03, only half covered
+        self.assertIn('solar (kWh/m²)', charts.history_csv(self.station, start, end, METRIC).splitlines()[0])
+
+    def test_short_solar_gaps_filled_from_neighbours(self):
+        D = 86_400_000
+        fill = charts._fill_short_gaps
+        self.assertEqual(fill([0, D, 2 * D], [4.0, None, 5.0], D, 2), [4.0, 4.5, 5.0])
+        self.assertEqual(fill([0, D, 2 * D, 3 * D], [4.0, None, None, 6.0], D, 2), [4.0, 5.0, 5.0, 6.0])
+        # Three missing, a missing end, or neighbours too far apart (an outage) stay gaps.
+        self.assertEqual(fill([0, D, 2 * D, 3 * D, 4 * D], [4.0, None, None, None, 6.0], D, 2), [4.0, None, None, None, 6.0])
+        self.assertEqual(fill([0, D], [4.0, None], D, 2), [4.0, None])
+        self.assertEqual(fill([0, 1, 10 * D], [4.0, None, 6.0], D, 2), [4.0, None, 6.0])
+
+    def test_history_fills_a_missing_solar_hour_but_csv_does_not(self):
+        for h, sol in ((0, 100.0), (1, None), (2, 300.0)):
+            HourlyRollup.objects.create(station=self.station, period_start=T0 + dt.timedelta(hours=h), solar_avg_wm2=sol)
+        end = T0 + dt.timedelta(days=10)
+        self.assertEqual(charts.history(self.station, T0, end, METRIC)['series']['solar'], [100, 200, 300])
+        self.assertNotIn('200', charts.history_csv(self.station, T0, end, METRIC))
+
     def test_csv_has_units_and_local_times(self):
         Observation.objects.create(station=self.station, timestamp=T0, source='api', temp_c=20.0)
         text = charts.history_csv(self.station, T0 - dt.timedelta(hours=1), T0, METRIC)

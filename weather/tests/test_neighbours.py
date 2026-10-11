@@ -8,7 +8,7 @@ from unittest import mock
 import requests
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django_otp.plugins.otp_totp.models import TOTPDevice
 
@@ -159,6 +159,8 @@ class ComparisonTests(TestCase):
         self.assertAlmostEqual(summary['day']['mean'], 23.0 - day_avg)
         self.assertAlmostEqual(summary['night']['mean'], 14.0 - (day_avg - 6))
         self.assertEqual(summary['all']['count'], 2)
+        self.assertIsNone(summary['all']['ci95'])                                       # under 3 days
+        self.assertEqual((summary['day']['days'], summary['night']['days']), (1, 1))    # 2 AM counts as Jul 1's night
         self.assertEqual(result['summary']['humidity']['night']['mean'], -5.0)
         self.assertAlmostEqual(result['by_hour']['temp_c'][12], 23.0 - day_avg)        # noon local
         # The outlier stands out against the others.
@@ -186,6 +188,18 @@ class ComparisonTests(TestCase):
         n = self.ns[0]
         n.latitude, n.longitude = Decimal('35.2'), Decimal('-106.6')
         self.assertAlmostEqual(neighbours.distance_km(self.station, n), 11.12, places=1)
+
+
+class UncertaintyTests(SimpleTestCase):
+    def test_days_not_readings_set_the_uncertainty(self):
+        d1, d2, d3 = dt.date(2026, 10, 1), dt.date(2026, 10, 2), dt.date(2026, 10, 3)
+        deltas = [(d1, 1.0)] * 200 + [(d2, 2.0)] * 200 + [(d3, 3.0)] * 200
+        stats = neighbours._stats(deltas)
+        self.assertEqual((stats['count'], stats['days']), (600, 3))
+        self.assertAlmostEqual(stats['mean'], 2.0)
+        self.assertAlmostEqual(stats['ci95'], 2 * 1.0 / math.sqrt(3))       # stdev of 1, 2, 3 is 1
+        self.assertIsNone(neighbours._stats(deltas[:400])['ci95'])           # two days aren't enough
+        self.assertIsNone(neighbours._stats([]))
 
 
 @override_settings(WU_API_KEY=KEY, WU_API_URL='https://wu.test/current')
@@ -245,6 +259,23 @@ class PageTests(TestCase):
         html = self.client.get(live).content.decode()
         self.assertIn('Neighbours', html)
         self.assertIn('+3.6°F', html)                     # 2 °C warmer
+
+    def test_right_now_says_when_the_reading_is_corrected(self):
+        from weather.models import TempCalibration
+        now = dt.datetime.now(UTC)
+        LatestReading.objects.create(station=self.station, timestamp=now, source='api', data={'temp_c': 24.0, 'humidity': 30})
+        n = Neighbour.objects.create(station=self.station, wu_id='KNMTEST1')
+        NeighbourReading.objects.create(neighbour=n, timestamp=now - dt.timedelta(minutes=3), temp_c=22.0, humidity=35)
+        self.client.force_login(self.owner)
+        html = self.client.get(self.url).content.decode()
+        self.assertIn('Right now', html)
+        self.assertNotIn('After calibration', html)
+        coef = {str(m): {'night': 1.0, 'day': 0.0, 'solar': 0.0} for m in range(1, 13)}   # 1 °C at any hour
+        TempCalibration.objects.create(station=self.station, mode='manual', start=now - dt.timedelta(days=1),
+                                       coefficients=coef, status='applied')
+        html = self.client.get(self.url).content.decode()
+        self.assertIn('After calibration', html)
+        self.assertIn('+1.8°F', html)                     # 23 °C corrected against 22 °C
 
 
 class SuggestedCalibrationTests(TestCase):

@@ -203,7 +203,9 @@
           { key: 'wind', title: `Wind (${u.wind})`, note: res === 'raw' ? '' : 'Mean speed and peak gust' },
           { key: 'rain', title: `Rain (${u.rain})`, note: `Bars: total ${per} · line: accumulated since the start of the range` },
           { key: 'pressure', title: `Pressure (${u.pressure})`, note: res === 'raw' ? '' : 'Mean' },
-          { key: 'solar', title: 'Solar radiation (W/m²)', note: res === 'daily' ? 'Daily peak' : (res === 'hourly' ? 'Mean' : '') },
+          res === 'daily'
+            ? { key: 'solar', title: 'Solar energy (kWh/m²)', note: 'Total per day (area under the W/m² curve)' }
+            : { key: 'solar', title: 'Solar radiation (W/m²)', note: res === 'hourly' ? 'Mean' : '' },
         ].concat((this.history.sensor_charts || []).map((sc) => ({
           key: sc.key, title: sc.title, sensor: sc,
           note: sc.bars ? `Strikes ${per}` : (res === 'raw' ? '' : 'Mean'),
@@ -326,7 +328,8 @@
                             data: s.time.map((t, i) => [t, s.temp_max[i] != null && s.temp_min[i] != null ? s.temp_max[i] - s.temp_min[i] : null]),
                             lineStyle: { opacity: 0 }, itemStyle: { color: blue }, areaStyle: { color: blue, opacity: 0.12 },
                             emphasis: { disabled: true } });
-              [['_high_edge', 'temp_max', orange], ['_low_edge', 'temp_min', blue]].forEach(([name, key, color]) => {
+              // Edges only on daily data; at 5-minute or hourly resolution they crowd the temperature line.
+              if (res === 'daily') [['_high_edge', 'temp_max', orange], ['_low_edge', 'temp_min', blue]].forEach(([name, key, color]) => {
                 const edge = line(name, key, color, false);
                 edge.lineStyle.width = 1;
                 series.push(edge);
@@ -380,7 +383,9 @@
             return opt;
           },
           pressure: () => base('pressure', [line('Pressure', 'pressure', pal[0], false)], null, d.pressure),
-          solar: () => base('solar', [line('Solar radiation', 'solar', pal[0], true)], null, 0),
+          solar: () => res === 'daily'
+            ? base('solar', [line('Solar energy', 'solar', pal[0], true)], null, 2)
+            : base('solar', [line('Solar radiation', 'solar', pal[0], true)], null, 0),
         };
 
         // Extra sensors: one line per channel (fixed palette slots, legend when ≥ 2), or

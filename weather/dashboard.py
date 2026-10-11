@@ -106,8 +106,10 @@ def _neighbours(station, data, now):
 
 
 def live_values(station, latest):
-    """The latest reading's values as the dashboard shows them (exclusions and calibration applied)."""
-    return _live(station, latest)[0]
+    """(values, calibrated?) for the latest reading as the dashboard shows it (exclusions and
+    calibration applied)."""
+    data, _excluded, calibrated = _live(station, latest)
+    return data, calibrated
 
 
 def build(station, prefs, viewer=None, now=None):

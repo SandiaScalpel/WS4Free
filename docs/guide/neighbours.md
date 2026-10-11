@@ -50,7 +50,9 @@ reporting, it simply averages them.)
 Readings that failed Weather Underground's own quality check are ignored.
 
 - **Right now**: your latest reading, the neighbours' average, and the
-  difference. The owner (and managers and advanced viewers) also see the
+  difference. Your reading is the one the dashboard shows, so while a
+  temperature calibration is in force it's the corrected value, marked
+  *After calibration*. The owner (and managers and advanced viewers) also see the
   neighbours' average on the dashboard,
   under *Feels like*.
 - **You compared with your neighbours**: over 24 hours, 7 or 30 days, your
@@ -58,6 +60,13 @@ Readings that failed Weather Underground's own quality check are ignored.
   is up and at night. A sensor that reads warm only in sunshine shows up as a
   positive *Sun up* difference with a small *Night* one: the typical sign of a
   poor radiation shield.
+  Beside each average, **±** is its 95 % uncertainty, worked out from how much
+  the daily averages vary: readings a few minutes apart share the same weather,
+  so it's the number of days, not readings, that makes an average trustworthy
+  (it needs at least 3). It shrinks as days accumulate. A difference several
+  times its ± that stays about the same from one 30-day period to the next is
+  a real offset worth calibrating — though it can come from where either
+  station stands as well as from the sensor.
 - **Charts**: your readings and the neighbours' average over the period, and the
   difference by hour of the day.
 - **Compared with the others**, beside each neighbour: how far that station

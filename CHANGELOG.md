@@ -7,6 +7,37 @@ each release for anything you need to do beyond the usual steps in the README.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **Neighbours → You compared with your neighbours** shows a **±** column
+  beside each average difference: its 95 % uncertainty, from the day-to-day
+  variation, so you can tell a real offset from chance. The readings column
+  also shows how many days they cover.
+- **Neighbours → Right now** marks your reading *After calibration* while a
+  temperature calibration is correcting it.
+
+### Changed
+
+- **Charts → Solar** on daily views shows each day's solar energy (kWh/m²,
+  the area under the W/m² curve) instead of the day's peak, which barely
+  changes between clear and cloudy days. Days under 90 % coverage are left
+  blank. **Compare** does the same, and the CSV column says which unit it is.
+- **Charts → Solar** fills one or two missing values in a row with the
+  average of the values either side, on every view and on Compare. Longer
+  gaps stay gaps, and the CSV download keeps only measured values.
+- **Charts → Temperature** draws the low–high range's orange and blue edge
+  lines only on daily data; on 5-minute and hourly views they crowded the
+  temperature line (the shaded range stays).
+- **Temperature calibrations correct humidity too.** They used to recalculate
+  the dew point from the corrected temperature and the uncorrected humidity,
+  which made dew points too low where the sensor read warm. They now keep the
+  dew point (the shield warms the air, it doesn't add or remove moisture) and
+  recalculate relative humidity for the corrected temperature. Readings
+  already corrected are converted when you upgrade (migration 0021); removing a
+  calibration still restores every original value.
+
 ## 1.5.0 — 2026-10-07
 
 ### Added

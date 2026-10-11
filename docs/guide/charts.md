@@ -25,12 +25,19 @@ humidity, wind speed and gust, rain, pressure and solar radiation, plus any
 - **Hover** (or tap) for exact values.
 - **Temperature** is the yellow line, dew point green, wind chill purple and
   heat index red; the shaded low–high range has an orange top edge (highs)
-  and a blue bottom edge (lows).
+  and a blue bottom edge (lows) when the chart shows daily values.
 - **Soil moisture** is scaled from half the lowest reading in the range to
   twice the highest (both rounded down to a multiple of 5), so small daily
   changes don't look like big swings.
 - **Rain** shows bars for each 5 minutes, hour or day, and a line, on the
   right-hand scale, of the total since the start of the range.
+- **Solar** shows radiation in W/m² on 5-minute and hourly views. On daily
+  views (ranges over 120 days) it shows each day's solar energy in kWh/m²,
+  the area under that day's curve, so cloudy days stand out. A day needs
+  readings for at least 90 % of it; otherwise it's left blank. On every
+  view, one or two missing values in a row are filled in with the average
+  of the values either side (only on the chart; the CSV download keeps the
+  gaps).
 - **Gaps**: when the station was offline the lines break rather than drawing
   a straight line across the missing time.
 - **Low battery** periods are shaded in amber for the station's owner,

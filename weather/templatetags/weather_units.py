@@ -172,6 +172,19 @@ def _no_negative_zero(value, digits):
 
 
 @register.filter
+def temp_uncertainty(celsius, prefs=None):
+    """A temperature uncertainty, unsigned with ±: 1.25 °C → '±2.2°F'."""
+    p = _prefs(prefs)
+    return DASH if _missing(celsius) else f'±{p.t_delta(celsius):.1f}{p.label("temp")}'
+
+
+@register.filter
+def uncertainty(value, digits=1):
+    """An uncertainty in the value's own unit: 3.25 → '±3.2'."""
+    return DASH if _missing(value) else f'±{value:.{int(digits)}f}'
+
+
+@register.filter
 def signed(value, digits=1):
     """A signed difference in the value's own unit: 3.25 → '+3.2'."""
     return DASH if _missing(value) else f'{_no_negative_zero(value, int(digits)):+.{int(digits)}f}'

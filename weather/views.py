@@ -881,7 +881,7 @@ def station_neighbours(request, slug):
         })
     can_manage = access.can_manage(request.user, station)
     latest = getattr(station, 'latest', None)
-    ours_now = dashboard.live_values(station, latest)
+    ours_now, ours_calibrated = dashboard.live_values(station, latest)
     live = neighbour_data.live(station, now)
     if live:
         live['temp_diff'] = _diff(ours_now.get('temp_c'), live['temp_c'])
@@ -900,6 +900,7 @@ def station_neighbours(request, slug):
         'summary': result['summary'],
         'live': live,
         'ours_now': ours_now,
+        'ours_calibrated': ours_calibrated,
         'chart': {
             'units': prefs.as_json(),
             'tz': station.timezone,

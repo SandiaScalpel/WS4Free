@@ -127,9 +127,13 @@ might use a night offset of −2, a daytime offset of 4 and a solar slope of 4.
 
 ### What changes
 
-Once applied, the corrected temperatures (and the dew points calculated from
-them) are used everywhere: dashboard, charts, records, reports, growing degree
-days. New readings are corrected as they arrive if the period has no end.
+Once applied, the corrected temperatures are used everywhere: dashboard,
+charts, records, reports, growing degree days. Humidity is corrected with them:
+a sensor that reads warm in sunshine is measuring air its shield has warmed,
+which holds the same moisture but has a lower relative humidity. So the dew
+point is kept and the relative humidity recalculated for the corrected
+temperature: correcting a reading 3 °F down at 90 °F and 20 % humidity gives
+about 22 %. New readings are corrected as they arrive if the period has no end.
 Charts, the almanac, reports and the growing page note which periods are
 corrected, and the live temperature shows a **Corrected** badge.
 

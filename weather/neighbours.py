@@ -37,6 +37,7 @@ SPACING_S = 2.1                 # WU allows 30 requests a minute per key
 DAILY_LIMIT = 1500              # …and 1,500 a day
 LIVE_WINDOW = dt.timedelta(minutes=30)
 RANGES = {'24h': 1, '7d': 7, '30d': 30}
+MIN_DAYS_FOR_UNCERTAINTY = 3      # daily averages needed before the comparison's uncertainty means anything
 
 _ID = re.compile(r'^[A-Z0-9]{3,20}$')
 
@@ -217,14 +218,25 @@ def _sunny(station, when, solar):
 
 
 def _stats(deltas):
+    """Average difference, and its 95 % uncertainty from the spread of daily averages.
+
+    Readings minutes apart share the same weather, so they aren't independent and
+    σ/√readings would be far too optimistic; days are treated as the independent
+    samples instead (2 · standard error of the daily means, needs ≥ 3 days).
+    `deltas` is [(day key, difference)]."""
     if not deltas:
         return None
-    return {'mean': statistics.fmean(deltas), 'count': len(deltas)}
+    by_day = defaultdict(list)
+    for day, d in deltas:
+        by_day[day].append(d)
+    daily = [statistics.fmean(v) for v in by_day.values()]
+    ci95 = 2 * statistics.stdev(daily) / math.sqrt(len(daily)) if len(daily) >= MIN_DAYS_FOR_UNCERTAINTY else None
+    return {'mean': statistics.fmean(d for _, d in deltas), 'ci95': ci95, 'count': len(deltas), 'days': len(daily)}
 
 
 def compare(station, start, end, raw=False):
     """This station against its included neighbours over [start, end). With `raw`,
-    this station's temperatures are the sensor's own, before any calibration.
+    this station's temperatures and humidities are the sensor's own, before any calibration.
 
     Returns {'rows': [...], 'summary': {field: {all, day, night}}, 'by_hour': {field: [24 averages]},
     'neighbours': {neighbour_id: {field: (average offset from the others, count)}}}; SI units.
@@ -244,12 +256,13 @@ def compare(station, start, end, raw=False):
             .filter(station=station, timestamp__gte=start, timestamp__lt=end + dt.timedelta(seconds=interval))
             .values('timestamp', 'temp_c', 'humidity', 'solar_wm2')}
     if raw:
-        for ts, value in (CalibratedValue.objects
-                          .filter(observation__station=station, field='temp_c', observation__timestamp__gte=start,
-                                  observation__timestamp__lt=end + dt.timedelta(seconds=interval))
-                          .values_list('observation__timestamp', 'value')):
+        for ts, field, value in (CalibratedValue.objects
+                                 .filter(observation__station=station, field__in=('temp_c', 'humidity'),
+                                         observation__timestamp__gte=start,
+                                         observation__timestamp__lt=end + dt.timedelta(seconds=interval))
+                                 .values_list('observation__timestamp', 'field', 'value')):
             if ts in ours:
-                ours[ts]['temp_c'] = value
+                ours[ts][field] = value
     fields = ('temp_c', 'humidity')
     rows = []
     deltas = {f: {'all': [], 'day': [], 'night': []} for f in fields}
@@ -270,8 +283,12 @@ def compare(station, start, end, raw=False):
             row[f] = (own, middle, used)
             if own is not None and middle is not None:
                 d = own - middle
-                deltas[f]['all'].append(d)
-                deltas[f]['day' if sunny else 'night'].append(d)
+                local = (t - dt.timedelta(seconds=1)).astimezone(tz)
+                deltas[f]['all'].append((local.date(), d))
+                if sunny:
+                    deltas[f]['day'].append((local.date(), d))
+                else:                           # a night belongs to the evening it starts on
+                    deltas[f]['night'].append(((local - dt.timedelta(hours=12)).date(), d))
                 hours[f][(t - dt.timedelta(seconds=1)).astimezone(tz).hour].append(d)
             if len(theirs) >= 4:                # each neighbour against the (trimmed) average of the others
                 for nid, v in theirs.items():

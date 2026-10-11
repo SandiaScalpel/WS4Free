@@ -35,7 +35,8 @@
     <h2 id="now-title" class="text-base font-semibold">Right now</h2>
     <dl class="mt-3 grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
       <div><dt class="text-muted">You</dt>
-        <dd class="mt-0.5 text-lg font-semibold">{{ ours_now.temp_c|temp:units }} <span class="text-muted">· {{ ours_now.humidity|pct }}</span></dd></div>
+        <dd class="mt-0.5 text-lg font-semibold">{{ ours_now.temp_c|temp:units }} <span class="text-muted">· {{ ours_now.humidity|pct }}</span></dd>
+        {% if ours_calibrated %}<dd class="mt-0.5 text-xs text-faint">After calibration</dd>{% endif %}</div>
       <div><dt class="text-muted">Neighbours <span class="text-faint">(average of {{ live.n }}{% if live.reporting > live.n %}: highest and lowest of {{ live.reporting }} left out{% endif %})</span></dt>
         <dd class="mt-0.5 text-lg font-semibold">{{ live.temp_c|temp:units }} <span class="text-muted">· {{ live.humidity|pct }}</span></dd></div>
       <div><dt class="text-muted">Difference</dt>
@@ -113,8 +114,11 @@
           <tr class="border-b border-line">
             <th scope="col" class="px-5 py-3 text-left font-medium"></th>
             <th scope="col" class="px-5 py-3 text-right font-medium">All readings</th>
+            <th scope="col" class="py-3 pr-5 text-right font-medium"><abbr title="95 % uncertainty of the average, from the day-to-day variation (needs 3 days)" class="no-underline">±</abbr><span class="sr-only"> uncertainty, all readings</span></th>
             <th scope="col" class="px-5 py-3 text-right font-medium">Sun up</th>
+            <th scope="col" class="py-3 pr-5 text-right font-medium"><abbr title="95 % uncertainty of the average, from the day-to-day variation (needs 3 days)" class="no-underline">±</abbr><span class="sr-only"> uncertainty, sun up</span></th>
             <th scope="col" class="px-5 py-3 text-right font-medium">Night</th>
+            <th scope="col" class="py-3 pr-5 text-right font-medium"><abbr title="95 % uncertainty of the average, from the day-to-day variation (needs 3 days)" class="no-underline">±</abbr><span class="sr-only"> uncertainty, night</span></th>
             <th scope="col" class="px-5 py-3 text-right font-medium">Matched readings</th>
           </tr>
         </thead>
@@ -122,21 +126,27 @@
           <tr>
             <th scope="row" class="px-5 py-3 text-left font-medium">Temperature</th>
             <td class="px-5 py-3 text-right font-semibold">{{ summary.temp_c.all.mean|temp_delta:units }}</td>
+            <td class="py-3 pr-5 text-right text-muted">{{ summary.temp_c.all.ci95|temp_uncertainty:units }}</td>
             <td class="px-5 py-3 text-right">{{ summary.temp_c.day.mean|temp_delta:units }}</td>
+            <td class="py-3 pr-5 text-right text-muted">{{ summary.temp_c.day.ci95|temp_uncertainty:units }}</td>
             <td class="px-5 py-3 text-right">{{ summary.temp_c.night.mean|temp_delta:units }}</td>
-            <td class="px-5 py-3 text-right text-muted">{{ summary.temp_c.all.count|default:0|intcomma }}</td>
+            <td class="py-3 pr-5 text-right text-muted">{{ summary.temp_c.night.ci95|temp_uncertainty:units }}</td>
+            <td class="px-5 py-3 text-right text-muted">{{ summary.temp_c.all.count|default:0|intcomma }}{% if summary.temp_c.all %} <span class="text-faint">· {{ summary.temp_c.all.days }} day{{ summary.temp_c.all.days|pluralize }}</span>{% endif %}</td>
           </tr>
           <tr>
             <th scope="row" class="px-5 py-3 text-left font-medium">Humidity</th>
             <td class="px-5 py-3 text-right font-semibold">{% if summary.humidity.all %}{{ summary.humidity.all.mean|signed:0 }}%{% else %}—{% endif %}</td>
+            <td class="py-3 pr-5 text-right text-muted">{% if summary.humidity.all %}{{ summary.humidity.all.ci95|uncertainty:0 }}{% if summary.humidity.all.ci95 is not None %}%{% endif %}{% else %}—{% endif %}</td>
             <td class="px-5 py-3 text-right">{% if summary.humidity.day %}{{ summary.humidity.day.mean|signed:0 }}%{% else %}—{% endif %}</td>
+            <td class="py-3 pr-5 text-right text-muted">{% if summary.humidity.day %}{{ summary.humidity.day.ci95|uncertainty:0 }}{% if summary.humidity.day.ci95 is not None %}%{% endif %}{% else %}—{% endif %}</td>
             <td class="px-5 py-3 text-right">{% if summary.humidity.night %}{{ summary.humidity.night.mean|signed:0 }}%{% else %}—{% endif %}</td>
-            <td class="px-5 py-3 text-right text-muted">{{ summary.humidity.all.count|default:0|intcomma }}</td>
+            <td class="py-3 pr-5 text-right text-muted">{% if summary.humidity.night %}{{ summary.humidity.night.ci95|uncertainty:0 }}{% if summary.humidity.night.ci95 is not None %}%{% endif %}{% else %}—{% endif %}</td>
+            <td class="px-5 py-3 text-right text-muted">{{ summary.humidity.all.count|default:0|intcomma }}{% if summary.humidity.all %} <span class="text-faint">· {{ summary.humidity.all.days }} day{{ summary.humidity.all.days|pluralize }}</span>{% endif %}</td>
           </tr>
         </tbody>
       </table>
     </div>
-    <p class="mt-2 text-xs text-faint">Average differences. "Sun up" uses your solar sensor where you have one. Your readings are compared as stored, after any calibration you've applied.</p>
+    <p class="mt-2 text-xs text-faint">Average differences. ± is the 95 % uncertainty of each average, worked out from how much the daily averages vary (readings minutes apart share the same weather, so days are what count); it needs at least 3 days. A difference several times its ± that stays put from one period to the next is a real offset. "Sun up" uses your solar sensor where you have one. Your readings are compared as stored, after any calibration you've applied.</p>
 
     <div class="mt-4 grid gap-4 lg:grid-cols-2">
       <figure class="card min-w-0 p-5">

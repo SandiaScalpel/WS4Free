@@ -16,8 +16,10 @@ baseline period with a trusted sensor gives the site's natural difference from
 the reference for each month and hour; what is left in the affected period is
 the sensor's error. Validation fits on alternate weeks and tests on the others.
 
-Applying keeps every original value (CalibratedValue), recalculates dew point
-from the corrected temperature, marks rollups dirty, and is fully reversible —
+Applying keeps every original value (CalibratedValue), keeps the dew point
+(the shield warms the air, it doesn't change its moisture) and recalculates
+relative humidity for the corrected temperature, marks rollups dirty, and is
+fully reversible —
 the same pattern as data-quality exclusions, with which it cooperates:
 excluded (NULL) readings are skipped, and removing an exclusion re-applies the
 calibration to the readings it restores.
@@ -43,6 +45,7 @@ from .models import CalibratedValue, ExcludedValue, Observation, TempCalibration
 log = logging.getLogger(__name__)
 
 TEMP_FIELDS = ('temp_c', 'temp_min_c', 'temp_max_c')
+HUMIDITY_FIELDS = ('humidity', 'humidity_min', 'humidity_max')
 FAR_FUTURE = dt.datetime(9999, 1, 1, tzinfo=dt.UTC)
 ACTIVE = ('pending', 'applied')
 SUN_UP_WM2 = 5.0
@@ -120,14 +123,18 @@ def _window(station, start, end):
 
 
 def _correct(calibration, rows, fields=TEMP_FIELDS):
-    """Correct `fields` (and the dew point that depends on them) on rows not yet
-    corrected for those fields. Returns the number of rows changed."""
+    """Correct `fields` on rows not yet corrected for those fields, and the humidity
+    measured in the same air. Returns the number of rows changed.
+
+    The error being corrected is mostly the shield warming (or cooling) the air
+    around the sensor: the moisture in it is measured right, so the dew point is
+    kept and the relative humidity recalculated for the corrected temperature."""
     station = calibration.station
     changed = 0
     last_pk = 0
     while True:
         chunk = list(rows.filter(pk__gt=last_pk).order_by('pk')
-                     .only('pk', 'timestamp', 'solar_wm2', 'humidity', 'dewpoint_c', *TEMP_FIELDS)[:BATCH])
+                     .only('pk', 'timestamp', 'solar_wm2', *TEMP_FIELDS, *HUMIDITY_FIELDS)[:BATCH])
         if not chunk:
             break
         last_pk = chunk[-1].pk
@@ -143,16 +150,21 @@ def _correct(calibration, rows, fields=TEMP_FIELDS):
                 backups.append(CalibratedValue(observation_id=obs.pk, calibration=calibration, field=f, value=value))
                 setattr(obs, f, value - delta)
                 touched = True
-            if touched and obs.dewpoint_c is not None and (obs.pk, 'dewpoint_c') not in done:
-                if obs.humidity is not None and obs.temp_c is not None:
-                    backups.append(CalibratedValue(observation_id=obs.pk, calibration=calibration,
-                                                   field='dewpoint_c', value=obs.dewpoint_c))
-                    obs.dewpoint_c = units.dewpoint_c(obs.temp_c, obs.humidity)
+            # Humidity follows a corrected temperature (corrected now or before, e.g. when an
+            # exclusion of humidity alone is removed); never one that is missing or raw.
+            if obs.temp_c is not None and (touched or (obs.pk, 'temp_c') in done):
+                for f in HUMIDITY_FIELDS:
+                    value = getattr(obs, f)
+                    if value is None or (obs.pk, f) in done:
+                        continue
+                    backups.append(CalibratedValue(observation_id=obs.pk, calibration=calibration, field=f, value=value))
+                    setattr(obs, f, units.humidity_at(value, obs.temp_c + delta, obs.temp_c))
+                    touched = True
             if touched:
                 updated.append(obs)
         CalibratedValue.objects.bulk_create(backups, ignore_conflicts=True)
         if updated:
-            Observation.objects.bulk_update(updated, [*TEMP_FIELDS, 'dewpoint_c'])
+            Observation.objects.bulk_update(updated, [*TEMP_FIELDS, *HUMIDITY_FIELDS])
             changed += len(updated)
     return changed
 
@@ -210,7 +222,7 @@ def apply_to_new_rows(station, start, end, written_fields=None):
         lo, hi = max(start, calibration.start), min(end, calibration.end or end)
         rows = _window(station, lo, hi)
         if written_fields:
-            stale = [f for f in (*TEMP_FIELDS, 'dewpoint_c') if f in written_fields]
+            stale = [f for f in (*TEMP_FIELDS, *HUMIDITY_FIELDS) if f in written_fields]
             CalibratedValue.objects.filter(observation__in=rows, field__in=stale).delete()
         _correct(calibration, rows)
 
@@ -231,8 +243,8 @@ def correct_live(station, data, when):
         return data
     delta = offset_c(calibration, station, when, data.get('solar_wm2'))
     data = dict(data, temp_c=data['temp_c'] - delta)
-    if data.get('humidity') is not None:
-        data['dewpoint_c'] = units.dewpoint_c(data['temp_c'], data['humidity'])
+    if data.get('humidity') is not None:              # same air, same dew point (see _correct)
+        data['humidity'] = units.humidity_at(data['humidity'], data['temp_c'] + delta, data['temp_c'])
     return data
 
 

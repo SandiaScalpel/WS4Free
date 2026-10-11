@@ -52,6 +52,15 @@ def dewpoint_c(temp_c, humidity):
     return b * gamma / (a - gamma)
 
 
+def humidity_at(humidity, from_c, to_c):
+    """Relative humidity of the same air (same dew point) at `to_c` instead of `from_c`:
+    RH scales with the ratio of saturation vapour pressures (Magnus, as dewpoint_c)."""
+    if humidity is None or from_c is None or to_c is None:
+        return None
+    a, b = 17.625, 243.04
+    return min(100.0, humidity * math.exp(a * from_c / (b + from_c) - a * to_c / (b + to_c)))
+
+
 WIND_CHILL, HEAT_INDEX = 'wind_chill', 'heat_index'
 
 

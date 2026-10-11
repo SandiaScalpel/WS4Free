@@ -86,17 +86,23 @@
       unit(qty) {
         if (!this.data) return '';
         const l = this.data.units.labels;
-        return { temp: l.temp, pct: '%', wind: l.wind, rain: l.rain, pressure: l.pressure, solar: 'W/m²' }[qty];
+        const solar = this.data.resolution === 'daily' ? 'kWh/m²' : 'W/m²';
+        return { temp: l.temp, pct: '%', wind: l.wind, rain: l.rain, pressure: l.pressure, solar }[qty];
       },
       digits(qty) {
         const d = this.data.units.digits;
-        return { temp: d.temp, pct: 0, wind: 1, rain: d.rain, pressure: d.pressure, solar: 0 }[qty];
+        const solar = this.data.resolution === 'daily' ? 2 : 0;
+        return { temp: d.temp, pct: 0, wind: 1, rain: d.rain, pressure: d.pressure, solar }[qty];
       },
-      title(c) { return `${c.label}${this.diff && this.chosen.length > 1 ? ', difference' : ''} (${this.unit(c.q)})`; },
+      title(c) {
+        const label = c.key === 'solar' && this.data && this.data.resolution === 'daily' ? 'Solar energy' : c.label;
+        return `${label}${this.diff && this.chosen.length > 1 ? ', difference' : ''} (${this.unit(c.q)})`;
+      },
       note(c) {
         if (!this.data) return '';
         const res = this.data.resolution;
         if (c.key === 'rain') return 'Total since the start of the range';
+        if (c.key === 'solar' && res === 'daily') return 'Total each day';
         if (c.key === 'gust') return res === 'raw' ? '' : `Peak ${res === 'hourly' ? 'each hour' : 'each day'}`;
         return res === 'raw' ? '' : `${res === 'hourly' ? 'Hourly' : 'Daily'} mean`;
       },

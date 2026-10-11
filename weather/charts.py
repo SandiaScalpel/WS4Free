@@ -67,6 +67,26 @@ def _with_gaps(rows, max_gap_ms):
     return out
 
 
+def _fill_short_gaps(times, values, step_ms, digits, max_missing=2):
+    """Fill a run of up to max_missing missing buckets with the mean of the values either side
+    (owner's choice for solar: good enough). The neighbours must be no more than max_missing
+    buckets apart, so a longer outage stays a gap; the 10 % slack covers 23/25-h DST days."""
+    out = list(values)
+    i = 0
+    while i < len(out):
+        if out[i] is not None:
+            i += 1
+            continue
+        j = i
+        while j < len(out) and out[j] is None:
+            j += 1
+        if (0 < i and j < len(out) and j - i <= max_missing
+                and times[j] - times[i - 1] <= (max_missing + 1) * step_ms * 1.1):
+            out[i:j] = [_r((out[i - 1] + out[j]) / 2, digits)] * (j - i)
+        i = j
+    return out
+
+
 HISTORY_COLUMNS = ('time', 'temp', 'temp_min', 'temp_max', 'dewpoint', 'humidity', 'wind', 'gust',
                    'rain', 'pressure', 'solar', 'uv', 'windchill', 'heatindex')
 
@@ -140,10 +160,11 @@ def _sensor_charts(sensors, prefs):
     return charts
 
 
-def history(station, start, end, prefs, include_private=False, batteries=False):
+def history(station, start, end, prefs, include_private=False, batteries=False, fill=True):
     """Columnar series for (start, end]. Times are epoch ms of each bucket's start.
     Extra sensors the viewer may see are added as `x:<upload key>` columns; low-battery
-    periods only with `batteries` (those who manage the station)."""
+    periods only with `batteries` (those who manage the station). With `fill`, one or two
+    missing solar buckets are filled from their neighbours (charts only; CSV stays measured)."""
     res = resolution_for(start, end)
     d = prefs.digits
     sensors = [(s, n) for s, n in station_sensors(station, include_private) if s.chartable]
@@ -189,7 +210,7 @@ def history(station, start, end, prefs, include_private=False, batteries=False):
                 _r(prefs.w(r.wind_speed_avg_ms), 1), _r(prefs.w(r.wind_gust_max_ms), 1),
                 _r(prefs.r(r.rain_mm), d['rain'] + 1) if rain_ok else None,
                 _r(prefs.p(r.pressure_avg_hpa), d['pressure'] + 1),
-                _r(r.solar_max_wm2 if res == 'daily' else r.solar_avg_wm2, 0),
+                _r(r.solar_avg_wm2, 0) if res == 'hourly' else _daily_insolation(r, station.tzinfo),
                 _r(r.uv_max, 1),
                 # Lowest wind chill / highest heat index of the hour or day.
                 _r(prefs.t(r.windchill_min_c), d['temp']),
@@ -209,6 +230,9 @@ def history(station, start, end, prefs, include_private=False, batteries=False):
             series[col] = _strikes(series['time'], series[col], station.tzinfo)
     rows = _with_gaps([list(r) for r in zip(*(series[n] for n in names))] if rows else [], 2 * step_ms + 1)
     columns = [list(col) for col in zip(*rows)] if rows else [[] for _ in names]
+    if fill and rows:
+        i = names.index('solar')
+        columns[i] = _fill_short_gaps(columns[0], columns[i], step_ms, 2 if res == 'daily' else 0)
     return {
         'resolution': res,
         'start': int(start.timestamp() * 1000),
@@ -243,14 +267,26 @@ def battery_periods(buckets, step_ms):
     return periods
 
 
+def _daily_insolation(r, tz):
+    """Daily solar energy in kWh/m² (the area under the day's W/m² curve): the mean over the
+    covered part of the day times the local day's length (23 or 25 h on DST days). Unknown
+    below 90 % coverage — a missing midday would read as a cloudy day."""
+    if r.solar_avg_wm2 is None or r.coverage < 0.9:
+        return None
+    start = dt.datetime.combine(r.date, dt.time(), tzinfo=tz)
+    end = dt.datetime.combine(r.date + dt.timedelta(days=1), dt.time(), tzinfo=tz)
+    hours = (end.astimezone(dt.timezone.utc) - start.astimezone(dt.timezone.utc)).total_seconds() / 3600
+    return _r(r.solar_avg_wm2 * hours / 1000, 2)
+
+
 def history_csv(station, start, end, prefs, include_private=False):
-    data = history(station, start, end, prefs, include_private)
+    data = history(station, start, end, prefs, include_private, fill=False)
     tz = station.tzinfo
     labels = prefs.as_json()['labels']
     header = ['time (' + station.timezone + ')', f'temperature ({labels["temp"]})', f'temp min ({labels["temp"]})',
               f'temp max ({labels["temp"]})', f'dew point ({labels["temp"]})', 'humidity (%)',
               f'wind ({labels["wind"]})', f'gust ({labels["wind"]})', f'rain ({labels["rain"]})',
-              f'pressure ({labels["pressure"]})', 'solar (W/m²)', 'UV index',
+              f'pressure ({labels["pressure"]})', 'solar (kWh/m²)' if data['resolution'] == 'daily' else 'solar (W/m²)', 'UV index',
               f'wind chill ({labels["temp"]})', f'heat index ({labels["temp"]})']
     columns = list(HISTORY_COLUMNS[1:])
     for chart in data['sensor_charts']:

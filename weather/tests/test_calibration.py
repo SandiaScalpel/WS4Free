@@ -7,7 +7,7 @@ from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 from django_otp.plugins.otp_totp.models import TOTPDevice
 
-from weather import calibration as cal, dashboard, quality
+from weather import calibration as cal, dashboard, quality, units
 from weather.ingest.parsers import Reading
 from weather.ingest.store import record_archive, record_push
 from weather.models import (
@@ -54,16 +54,20 @@ class ApplyRemoveTests(TestCase):
                                    dewpoint_c=dewpoint_c(20.0, 50.0), solar_wm2=0.0)
 
     def test_apply_and_remove_exactly(self):
-        before = list(Observation.objects.order_by('pk').values_list('temp_c', 'dewpoint_c'))
+        before = list(Observation.objects.order_by('pk').values_list('temp_c', 'humidity', 'dewpoint_c'))
         c = manual(self.station, night=-1.0, day=2.0, solar=3.0, status='pending')
         self.assertEqual(cal.apply_calibration(c), 2)
         noon = Observation.objects.get(timestamp=NOON)
         night = Observation.objects.get(timestamp=MIDNIGHT)
         self.assertAlmostEqual(noon.temp_c, 35.0 - (-1.0 + 2.0 + 2.7))
         self.assertAlmostEqual(night.temp_c, 21.0)                         # cold at night → corrected upward
-        self.assertAlmostEqual(noon.dewpoint_c, dewpoint_c(noon.temp_c, 20.0))
+        # Same air: the dew point stays, humidity is what it would read at the corrected temperature.
+        self.assertAlmostEqual(noon.dewpoint_c, dewpoint_c(35.0, 20.0))
+        self.assertAlmostEqual(dewpoint_c(noon.temp_c, noon.humidity), noon.dewpoint_c)
+        self.assertGreater(noon.humidity, 20.0)                            # cooler air, higher RH
+        self.assertLess(night.humidity, 50.0)
         cal.remove_calibration(c)
-        self.assertEqual(list(Observation.objects.order_by('pk').values_list('temp_c', 'dewpoint_c')), before)
+        self.assertEqual(list(Observation.objects.order_by('pk').values_list('temp_c', 'humidity', 'dewpoint_c')), before)
         self.assertFalse(CalibratedValue.objects.exists())
 
     def test_reapplying_never_double_corrects(self):
@@ -95,6 +99,15 @@ class IngestTests(TestCase):
         self.assertTrue(ctx['calibrated'])
         self.assertEqual(LatestReading.objects.get().data['temp_c'], 30.0)   # stored as received
 
+    def test_live_humidity_follows_the_correction(self):
+        record_archive(self.station, [Reading(NOON, {'temp_c': 30.0, 'humidity': 25.0, 'dewpoint_c': dewpoint_c(30.0, 25.0),
+                                                     'solar_wm2': 600.0})], Observation.SOURCE_API)
+        row = Observation.objects.get()
+        now = dashboard.build(self.station, UnitPrefs.for_system('metric'), now=NOON)['now']
+        self.assertAlmostEqual(now['humidity'], row.humidity)
+        self.assertAlmostEqual(now['dewpoint_c'], dewpoint_c(30.0, 25.0))
+        self.assertAlmostEqual(dewpoint_c(27.0, row.humidity), dewpoint_c(30.0, 25.0))
+
 
 class ExclusionInterplayTests(TestCase):
     def setUp(self):
@@ -122,6 +135,44 @@ class ExclusionInterplayTests(TestCase):
         self.assertAlmostEqual(Observation.objects.get().temp_c, 18.0)     # restored, then corrected
         cal.remove_calibration(c)
         self.assertEqual(Observation.objects.get().temp_c, 20.0)
+
+    def test_humidity_excluded_then_restored_is_corrected(self):
+        Observation.objects.update(humidity=50.0, dewpoint_c=dewpoint_c(20.0, 50.0))
+        e = DataExclusion.objects.create(station=self.station, start=self.window[0], end=self.window[1], groups=['humidity'])
+        quality.apply_exclusion(e)
+        c = manual(self.station, night=2.0, status='pending')
+        cal.apply_calibration(c)                                            # temperature only: humidity is missing
+        quality.remove_exclusion(e)
+        row = Observation.objects.get()
+        self.assertAlmostEqual(row.humidity, units.humidity_at(50.0, 20.0, 18.0))
+        self.assertAlmostEqual(row.dewpoint_c, dewpoint_c(20.0, 50.0))
+        cal.remove_calibration(c)
+        self.assertEqual(Observation.objects.get().humidity, 50.0)
+
+
+class OldStyleCalibrationMigrationTests(TestCase):
+    """0021: readings corrected before it had their dew point recalculated; it puts
+    the dew point back and corrects the humidity instead."""
+
+    def test_migrates_old_corrections(self):
+        import importlib
+        from django.apps import apps
+        station = make_station(latitude=40.0, longitude=-105.0)
+        c = manual(station, night=2.0)
+        obs = Observation.objects.create(station=station, timestamp=MIDNIGHT, source='api', temp_c=18.0, humidity=50.0,
+                                         dewpoint_c=dewpoint_c(18.0, 50.0), solar_wm2=0.0)
+        for field, value in (('temp_c', 20.0), ('dewpoint_c', dewpoint_c(20.0, 50.0))):
+            CalibratedValue.objects.create(observation=obs, calibration=c, field=field, value=value)
+        importlib.import_module('weather.migrations.0021_calibration_keeps_dewpoint').forwards(apps, None)
+        obs.refresh_from_db()
+        self.assertAlmostEqual(obs.dewpoint_c, dewpoint_c(20.0, 50.0))
+        self.assertAlmostEqual(obs.humidity, units.humidity_at(50.0, 20.0, 18.0))
+        self.assertEqual(set(CalibratedValue.objects.values_list('field', flat=True)), {'temp_c', 'humidity'})
+        station.refresh_from_db()
+        self.assertEqual(station.rollup_dirty_from, MIDNIGHT)
+        cal.remove_calibration(c)
+        obs.refresh_from_db()
+        self.assertEqual((obs.temp_c, obs.humidity), (20.0, 50.0))
 
 
 class FitTests(TestCase):
